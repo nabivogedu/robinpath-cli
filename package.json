@@ -7,5 +7,8 @@
         "build:bundle": "npx esbuild cli-entry.js --bundle --platform=node --format=cjs --target=node22 --outfile=dist/robinpath-cli.cjs",
         "build:blob": "node --experimental-sea-config sea-config.json",
         "build": "npm run build:bundle && npm run build:blob"
+    },
+    "dependencies": {
+        "@robinpath/robinpath": "^0.30.0"
     }
 }

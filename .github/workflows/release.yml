@@ -29,6 +29,12 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Install dependencies
+        run: npm install
+
+      - name: Bundle CLI
+        run: npm run build:bundle
+
       - name: Generate SEA blob
         run: node --experimental-sea-config sea-config.json
 

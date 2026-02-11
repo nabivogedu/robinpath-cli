@@ -5,7 +5,7 @@ var import_node_path = require("node:path");
 var import_node_child_process = require("node:child_process");
 var import_node_os = require("node:os");
 
-// ../robinpath/dist/index.js
+// node_modules/@robinpath/robinpath/dist/index.js
 var L = class {
   static parseString(e) {
     if (e.startsWith('"') && e.endsWith('"') || e.startsWith("'") && e.endsWith("'") || e.startsWith("`") && e.endsWith("`")) {
@@ -13867,12 +13867,28 @@ Example:
 };
 
 // cli-entry.js
+var FLAG_QUIET = false;
+var FLAG_VERBOSE = false;
+function log(...args) {
+  if (!FLAG_QUIET) console.log(...args);
+}
+function logVerbose(...args) {
+  if (FLAG_VERBOSE) console.error("[verbose]", ...args);
+}
+var isTTY = process.stderr.isTTY;
+var color = {
+  red: (s) => isTTY ? `\x1B[31m${s}\x1B[0m` : s,
+  green: (s) => isTTY ? `\x1B[32m${s}\x1B[0m` : s,
+  yellow: (s) => isTTY ? `\x1B[33m${s}\x1B[0m` : s,
+  dim: (s) => isTTY ? `\x1B[2m${s}\x1B[0m` : s,
+  bold: (s) => isTTY ? `\x1B[1m${s}\x1B[0m` : s,
+  cyan: (s) => isTTY ? `\x1B[36m${s}\x1B[0m` : s
+};
 function getInstallDir() {
-  const home = (0, import_node_os.homedir)();
-  if ((0, import_node_os.platform)() === "win32") {
-    return (0, import_node_path.join)(home, ".robinpath", "bin");
-  }
-  return (0, import_node_path.join)(home, ".robinpath", "bin");
+  return (0, import_node_path.join)((0, import_node_os.homedir)(), ".robinpath", "bin");
+}
+function getRobinPathHome() {
+  return (0, import_node_path.join)((0, import_node_os.homedir)(), ".robinpath");
 }
 function handleInstall() {
   const installDir = getInstallDir();
@@ -13881,11 +13897,17 @@ function handleInstall() {
   const dest = (0, import_node_path.join)(installDir, exeName);
   const src = process.execPath;
   if ((0, import_node_path.resolve)(src) === (0, import_node_path.resolve)(dest)) {
-    console.log(`robinpath v${Sn} is already installed.`);
+    log(`robinpath v${Sn} is already installed.`);
     return;
   }
   (0, import_node_fs.mkdirSync)(installDir, { recursive: true });
   (0, import_node_fs.copyFileSync)(src, dest);
+  if (!isWindows) {
+    try {
+      (0, import_node_fs.chmodSync)(dest, 493);
+    } catch {
+    }
+  }
   if (isWindows) {
     try {
       const checkPath = (0, import_node_child_process.execSync)(
@@ -13899,31 +13921,31 @@ function handleInstall() {
         );
       }
     } catch {
-      console.log(`Could not update PATH automatically.`);
-      console.log(`Add this to your PATH manually: ${installDir}`);
+      log(`Could not update PATH automatically.`);
+      log(`Add this to your PATH manually: ${installDir}`);
     }
   } else {
     const shellProfile = process.env.SHELL?.includes("zsh") ? "~/.zshrc" : "~/.bashrc";
     const exportLine = `export PATH="${installDir}:$PATH"`;
-    console.log(`Add to ${shellProfile}:`);
-    console.log(`  ${exportLine}`);
+    log(`Add to ${shellProfile}:`);
+    log(`  ${exportLine}`);
   }
-  console.log("");
-  console.log(`Installed robinpath v${Sn}`);
-  console.log(`Location: ${dest}`);
-  console.log("");
-  console.log("Restart your terminal, then run:");
-  console.log("  robinpath --version");
+  log("");
+  log(`Installed robinpath v${Sn}`);
+  log(`Location: ${dest}`);
+  log("");
+  log("Restart your terminal, then run:");
+  log("  robinpath --version");
 }
 function handleUninstall() {
   const installDir = getInstallDir();
-  const robinpathHome = (0, import_node_path.join)((0, import_node_os.homedir)(), ".robinpath");
+  const robinpathHome = getRobinPathHome();
   const isWindows = (0, import_node_os.platform)() === "win32";
   if ((0, import_node_fs.existsSync)(robinpathHome)) {
     (0, import_node_fs.rmSync)(robinpathHome, { recursive: true, force: true });
-    console.log(`Removed ${robinpathHome}`);
+    log(`Removed ${robinpathHome}`);
   } else {
-    console.log("Nothing to remove.");
+    log("Nothing to remove.");
   }
   if (isWindows) {
     try {
@@ -13931,16 +13953,16 @@ function handleUninstall() {
         `powershell -NoProfile -Command "$p = [Environment]::GetEnvironmentVariable('Path','User'); $clean = ($p -split ';' | Where-Object { $_ -notlike '*\\.robinpath\\bin*' }) -join ';'; [Environment]::SetEnvironmentVariable('Path',$clean,'User')"`,
         { encoding: "utf-8" }
       );
-      console.log("Removed from PATH");
+      log("Removed from PATH");
     } catch {
-      console.log(`Could not update PATH automatically.`);
-      console.log(`Remove "${installDir}" from your PATH manually.`);
+      log(`Could not update PATH automatically.`);
+      log(`Remove "${installDir}" from your PATH manually.`);
     }
   } else {
-    console.log(`Remove the robinpath PATH line from your shell profile.`);
+    log(`Remove the robinpath PATH line from your shell profile.`);
   }
-  console.log("");
-  console.log("RobinPath uninstalled. Restart your terminal.");
+  log("");
+  log("RobinPath uninstalled. Restart your terminal.");
 }
 function resolveScriptPath(fileArg) {
   const filePath = (0, import_node_path.resolve)(fileArg);
@@ -13953,12 +13975,35 @@ function resolveScriptPath(fileArg) {
   }
   return null;
 }
-async function runScript(script) {
+function displayError(error, script) {
+  if (error.__formattedMessage) {
+    console.error(color.red("Error:") + " " + error.__formattedMessage);
+    return;
+  }
+  if (script) {
+    try {
+      const formatted = ut({ message: error.message, code: script });
+      if (formatted && formatted !== error.message) {
+        console.error(color.red("Error:") + " " + formatted);
+        return;
+      }
+    } catch {
+    }
+  }
+  console.error(color.red("Error:") + " " + error.message);
+}
+async function runScript(script, filePath) {
   const rp = new xe();
+  const startTime = FLAG_VERBOSE ? performance.now() : 0;
   try {
     await rp.executeScript(script);
+    if (FLAG_VERBOSE) {
+      const elapsed = (performance.now() - startTime).toFixed(1);
+      const mem = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
+      logVerbose(`Executed in ${elapsed}ms, heap: ${mem}MB`);
+    }
   } catch (error) {
-    console.error(`Error: ${error.message}`);
+    displayError(error, script);
     process.exit(1);
   }
 }
@@ -13974,85 +14019,550 @@ function readStdin() {
     });
   });
 }
-async function main() {
-  const args = process.argv.slice(2);
-  if (args.includes("--version") || args.includes("-v")) {
-    console.log(`robinpath v${Sn}`);
-    return;
+async function handleCheck(args) {
+  const fileArg = args.find((a) => !a.startsWith("-"));
+  if (!fileArg) {
+    console.error(color.red("Error:") + " check requires a file argument");
+    console.error("Usage: robinpath check <file>");
+    process.exit(2);
   }
-  if (args.includes("--help") || args.includes("-h")) {
-    console.log(`RobinPath v${Sn} - A scripting language for automation and data processing`);
-    console.log("");
-    console.log("Usage:");
-    console.log("  robinpath <script.rp>           Run a RobinPath script");
-    console.log(`  robinpath -e 'log "hello"'       Execute inline script`);
-    console.log("  robinpath                        Start interactive REPL");
-    console.log(`  echo 'log "hi"' | robinpath      Pipe script via stdin`);
-    console.log("");
-    console.log("Commands:");
-    console.log("  install               Install robinpath to your system PATH");
-    console.log("  uninstall             Remove robinpath from your system");
-    console.log("");
-    console.log("Options:");
-    console.log("  -e, --eval <script>   Execute a script string");
-    console.log("  -v, --version         Show version");
-    console.log("  -h, --help            Show this help");
-    console.log("");
-    console.log("Examples:");
-    console.log("  robinpath install           Install to PATH (run once)");
-    console.log("  robinpath hello             Runs hello.rp (auto-resolves extension)");
-    console.log("  robinpath app.rp            Runs app.rp");
-    console.log('  robinpath -e "math.add 1 2"');
-    console.log("  robinpath -- -weird-name.rp Use -- for files starting with -");
-    return;
+  const filePath = resolveScriptPath(fileArg);
+  if (!filePath) {
+    console.error(color.red("Error:") + ` File not found: ${fileArg}`);
+    process.exit(2);
   }
-  if (args[0] === "install") {
-    handleInstall();
-    return;
-  }
-  if (args[0] === "uninstall") {
-    handleUninstall();
-    return;
-  }
-  const evalIdx = args.indexOf("-e") !== -1 ? args.indexOf("-e") : args.indexOf("--eval");
-  if (evalIdx !== -1) {
-    const script = args[evalIdx + 1];
-    if (!script) {
-      console.error("Error: -e requires a script argument");
-      process.exit(1);
+  const script = (0, import_node_fs.readFileSync)(filePath, "utf-8");
+  const startTime = FLAG_VERBOSE ? performance.now() : 0;
+  try {
+    const parser = new W(script);
+    await parser.parse();
+    if (FLAG_VERBOSE) {
+      const elapsed = (performance.now() - startTime).toFixed(1);
+      logVerbose(`Parsed in ${elapsed}ms`);
     }
-    await runScript(script);
-    return;
-  }
-  const dashDashIdx = args.indexOf("--");
-  let fileArg;
-  if (dashDashIdx !== -1) {
-    fileArg = args[dashDashIdx + 1];
-  } else {
-    fileArg = args.find((a) => !a.startsWith("-"));
-  }
-  if (fileArg) {
-    const filePath = resolveScriptPath(fileArg);
-    if (!filePath) {
-      console.error(`Error: File not found: ${fileArg}`);
-      if (!(0, import_node_path.extname)(fileArg)) {
-        console.error(`  (also tried ${fileArg}.rp and ${fileArg}.robin)`);
-      }
-      process.exit(1);
+    log(color.green("OK") + ` ${fileArg} \u2014 no syntax errors`);
+    process.exit(0);
+  } catch (error) {
+    try {
+      const formatted = ut({ message: error.message, code: script });
+      console.error(color.red("Syntax error") + ` in ${fileArg}:
+${formatted}`);
+    } catch {
+      console.error(color.red("Syntax error") + ` in ${fileArg}: ${error.message}`);
     }
+    process.exit(2);
+  }
+}
+async function handleAST(args) {
+  const compact = args.includes("--compact");
+  const fileArg = args.find((a) => !a.startsWith("-"));
+  if (!fileArg) {
+    console.error(color.red("Error:") + " ast requires a file argument");
+    console.error("Usage: robinpath ast <file> [--compact]");
+    process.exit(2);
+  }
+  const filePath = resolveScriptPath(fileArg);
+  if (!filePath) {
+    console.error(color.red("Error:") + ` File not found: ${fileArg}`);
+    process.exit(2);
+  }
+  const script = (0, import_node_fs.readFileSync)(filePath, "utf-8");
+  const rp = new xe();
+  const startTime = FLAG_VERBOSE ? performance.now() : 0;
+  try {
+    const ast = await rp.getAST(script);
+    if (FLAG_VERBOSE) {
+      const elapsed = (performance.now() - startTime).toFixed(1);
+      logVerbose(`Parsed in ${elapsed}ms, ${ast.length} top-level nodes`);
+    }
+    console.log(compact ? JSON.stringify(ast) : JSON.stringify(ast, null, 2));
+  } catch (error) {
+    displayError(error, script);
+    process.exit(2);
+  }
+}
+async function handleFmt(args) {
+  const writeInPlace = args.includes("--write") || args.includes("-w");
+  const checkOnly = args.includes("--check");
+  const fileArg = args.find((a) => !a.startsWith("-"));
+  if (!fileArg) {
+    console.error(color.red("Error:") + " fmt requires a file or directory argument");
+    console.error("Usage: robinpath fmt <file|dir> [--write] [--check]");
+    process.exit(2);
+  }
+  const files = collectRPFiles(fileArg);
+  if (files.length === 0) {
+    console.error(color.red("Error:") + ` No .rp or .robin files found: ${fileArg}`);
+    process.exit(2);
+  }
+  let hasUnformatted = false;
+  for (const filePath of files) {
     const script = (0, import_node_fs.readFileSync)(filePath, "utf-8");
-    await runScript(script);
-    return;
-  }
-  if (!process.stdin.isTTY) {
-    const script = await readStdin();
-    if (script.trim()) {
-      await runScript(script);
+    const startTime = FLAG_VERBOSE ? performance.now() : 0;
+    try {
+      const formatted = await formatScript(script);
+      if (FLAG_VERBOSE) {
+        const elapsed = (performance.now() - startTime).toFixed(1);
+        logVerbose(`Formatted ${(0, import_node_path.relative)(process.cwd(), filePath)} in ${elapsed}ms`);
+      }
+      if (checkOnly) {
+        if (formatted !== script) {
+          console.error((0, import_node_path.relative)(process.cwd(), filePath) + " \u2014 " + color.red("not formatted"));
+          hasUnformatted = true;
+        } else {
+          log((0, import_node_path.relative)(process.cwd(), filePath) + " \u2014 " + color.green("OK"));
+        }
+      } else if (writeInPlace) {
+        if (formatted !== script) {
+          (0, import_node_fs.writeFileSync)(filePath, formatted, "utf-8");
+          log(color.green("formatted") + " " + (0, import_node_path.relative)(process.cwd(), filePath));
+        } else {
+          log(color.dim("unchanged") + " " + (0, import_node_path.relative)(process.cwd(), filePath));
+        }
+      } else {
+        process.stdout.write(formatted);
+      }
+    } catch (error) {
+      console.error(color.red("Error") + ` formatting ${(0, import_node_path.relative)(process.cwd(), filePath)}: ${error.message}`);
+      hasUnformatted = true;
     }
-    return;
   }
+  if (checkOnly && hasUnformatted) {
+    process.exit(1);
+  }
+}
+async function formatScript(script) {
+  const parser = new W(script);
+  const statements = await parser.parse();
+  const dummyLineIndex = new it("");
+  const ctx = {
+    indentLevel: 0,
+    lineIndex: dummyLineIndex
+    // No originalScript = forces normalized output
+  };
+  const normalized = statements.map((s) => stripFlavorFlags(s));
+  const parts = [];
+  for (let i = 0; i < normalized.length; i++) {
+    const code = A.printNode(normalized[i], ctx);
+    if (i > 0 && code.trim()) {
+      const prevType = normalized[i - 1].type;
+      const currType = normalized[i].type;
+      const blockTypes = ["ifBlock", "define", "do", "together", "forLoop", "onBlock", "cell"];
+      if (blockTypes.includes(prevType) || blockTypes.includes(currType)) {
+        parts.push("\n");
+      }
+    }
+    parts.push(code);
+  }
+  let result = parts.join("");
+  result = result.replace(/\n*$/, "\n");
+  return result;
+}
+function stripFlavorFlags(node) {
+  if (!node || typeof node !== "object") return node;
+  if (Array.isArray(node)) return node.map((n) => stripFlavorFlags(n));
+  const clone = { ...node };
+  if (clone.type === "assignment") {
+    delete clone.isSet;
+    delete clone.hasAs;
+    delete clone.isImplicit;
+  }
+  if (clone.type === "ifBlock") {
+    delete clone.hasThen;
+    if (clone.thenBranch) clone.thenBranch = clone.thenBranch.map((s) => stripFlavorFlags(s));
+    if (clone.elseBranch) clone.elseBranch = clone.elseBranch.map((s) => stripFlavorFlags(s));
+    if (clone.elseifBranches) {
+      clone.elseifBranches = clone.elseifBranches.map((b) => ({
+        ...b,
+        hasThen: void 0,
+        body: b.body ? b.body.map((s) => stripFlavorFlags(s)) : b.body
+      }));
+    }
+  }
+  if (clone.type === "command") {
+    delete clone.modulePrefix;
+  }
+  delete clone.codePos;
+  delete clone.bodyPos;
+  delete clone.openPos;
+  delete clone.closePos;
+  delete clone.headerPos;
+  delete clone.keywordPos;
+  delete clone.elseKeywordPos;
+  if (clone.body && Array.isArray(clone.body)) {
+    clone.body = clone.body.map((s) => stripFlavorFlags(s));
+  }
+  if (clone.command && typeof clone.command === "object") {
+    clone.command = stripFlavorFlags(clone.command);
+  }
+  return clone;
+}
+function collectRPFiles(pathArg) {
+  const fullPath = (0, import_node_path.resolve)(pathArg);
+  if (!(0, import_node_fs.existsSync)(fullPath)) {
+    const resolved = resolveScriptPath(pathArg);
+    if (resolved) return [resolved];
+    return [];
+  }
+  const stat = (0, import_node_fs.statSync)(fullPath);
+  if (stat.isFile()) {
+    return [fullPath];
+  }
+  if (stat.isDirectory()) {
+    return collectRPFilesRecursive(fullPath);
+  }
+  return [];
+}
+function collectRPFilesRecursive(dir) {
+  const results = [];
+  const entries = (0, import_node_fs.readdirSync)(dir);
+  for (const entry of entries) {
+    if (entry.startsWith(".") || entry === "node_modules") continue;
+    const fullPath = (0, import_node_path.join)(dir, entry);
+    const stat = (0, import_node_fs.statSync)(fullPath);
+    if (stat.isDirectory()) {
+      results.push(...collectRPFilesRecursive(fullPath));
+    } else if (entry.endsWith(".rp") || entry.endsWith(".robin")) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+async function handleTest(args) {
+  const targetArg = args.find((a) => !a.startsWith("-"));
+  const searchPath = targetArg || ".";
+  let testFiles;
+  const fullPath = (0, import_node_path.resolve)(searchPath);
+  if ((0, import_node_fs.existsSync)(fullPath) && (0, import_node_fs.statSync)(fullPath).isFile()) {
+    testFiles = [fullPath];
+  } else {
+    testFiles = collectTestFiles(searchPath);
+  }
+  if (testFiles.length === 0) {
+    log(color.yellow("No *.test.rp files found") + (targetArg ? ` in ${targetArg}` : ""));
+    process.exit(0);
+  }
+  let passed = 0;
+  let failed = 0;
+  const failures = [];
+  const startTime = performance.now();
+  for (const filePath of testFiles) {
+    const relPath = (0, import_node_path.relative)(process.cwd(), filePath);
+    const script = (0, import_node_fs.readFileSync)(filePath, "utf-8");
+    const rp = new xe();
+    try {
+      await rp.executeScript(script);
+      passed++;
+      log(color.green("PASS") + "  " + relPath);
+    } catch (error) {
+      failed++;
+      log(color.red("FAIL") + "  " + relPath);
+      let detail = "  " + error.message;
+      if (error.__formattedMessage) {
+        detail = "  " + error.__formattedMessage.split("\n").join("\n  ");
+      }
+      log(color.dim(detail));
+      failures.push({ file: relPath, error: error.message });
+    }
+  }
+  const total = passed + failed;
+  const elapsed = (performance.now() - startTime).toFixed(0);
+  log("");
+  const summary = `${total} test${total !== 1 ? "s" : ""}: ${passed} passed, ${failed} failed`;
+  if (failed > 0) {
+    log(color.red(summary) + color.dim(` (${elapsed}ms)`));
+  } else {
+    log(color.green(summary) + color.dim(` (${elapsed}ms)`));
+  }
+  process.exit(failed > 0 ? 1 : 0);
+}
+function collectTestFiles(searchPath) {
+  const fullPath = (0, import_node_path.resolve)(searchPath);
+  if (!(0, import_node_fs.existsSync)(fullPath)) {
+    return [];
+  }
+  const stat = (0, import_node_fs.statSync)(fullPath);
+  if (!stat.isDirectory()) {
+    if (fullPath.endsWith(".test.rp")) return [fullPath];
+    return [];
+  }
+  return collectTestFilesRecursive(fullPath);
+}
+function collectTestFilesRecursive(dir) {
+  const results = [];
+  const entries = (0, import_node_fs.readdirSync)(dir);
+  for (const entry of entries) {
+    if (entry.startsWith(".") || entry === "node_modules") continue;
+    const fullPath = (0, import_node_path.join)(dir, entry);
+    const stat = (0, import_node_fs.statSync)(fullPath);
+    if (stat.isDirectory()) {
+      results.push(...collectTestFilesRecursive(fullPath));
+    } else if (entry.endsWith(".test.rp")) {
+      results.push(fullPath);
+    }
+  }
+  return results.sort();
+}
+async function handleWatch(filePath, script) {
+  log(color.dim(`Watching ${(0, import_node_path.relative)(process.cwd(), filePath)} for changes...`));
+  log("");
+  await runWatchIteration(filePath);
+  let debounceTimer = null;
+  (0, import_node_fs.watch)(filePath, () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      process.stdout.write("\x1B[2J\x1B[H");
+      await runWatchIteration(filePath);
+    }, 200);
+  });
+}
+async function runWatchIteration(filePath) {
+  const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+  log(color.dim(`[${timestamp}]`) + ` Running ${(0, import_node_path.relative)(process.cwd(), filePath)}`);
+  log(color.dim("\u2500".repeat(50)));
+  const script = (0, import_node_fs.readFileSync)(filePath, "utf-8");
+  const rp = new xe();
+  try {
+    await rp.executeScript(script);
+  } catch (error) {
+    displayError(error, script);
+  }
+  log("");
+  log(color.dim("Waiting for changes..."));
+}
+function showMainHelp() {
+  console.log(`RobinPath v${Sn} \u2014 Scripting language for automation and data processing
+
+USAGE:
+  robinpath [command] [flags] [file]
+
+COMMANDS:
+  <file.rp>          Run a RobinPath script
+  fmt <file|dir>     Format a script (--write to overwrite, --check for CI)
+  check <file>       Check syntax without executing
+  ast <file>         Dump AST as JSON (--compact for minified)
+  test [dir|file]    Run *.test.rp test files
+  install            Install robinpath to system PATH
+  uninstall          Remove robinpath from system
+
+FLAGS:
+  -e, --eval <code>  Execute inline script
+  -w, --watch        Re-run script on file changes
+  -q, --quiet        Suppress non-error output
+  --verbose          Show timing and debug info
+  -v, --version      Show version
+  -h, --help         Show this help
+
+REPL:
+  robinpath          Start interactive REPL (no arguments)
+
+  REPL Commands:
+    help             Show help
+    exit / quit      Exit REPL
+    clear            Clear screen
+    ..               List all available commands/modules
+    .load <file>     Load and execute a script file
+    .save <file>     Save session to file
+    \\                Line continuation (at end of line)
+
+EXAMPLES:
+  robinpath app.rp                Run a script
+  robinpath hello                 Auto-resolves hello.rp or hello.robin
+  robinpath -e 'log "hi"'        Execute inline code
+  robinpath fmt app.rp            Print formatted code
+  robinpath fmt -w src/           Format all .rp files in dir
+  robinpath check app.rp          Syntax check
+  robinpath ast app.rp            Dump AST as JSON
+  robinpath test                  Run all *.test.rp in current dir
+  robinpath test tests/           Run tests in specific dir
+  robinpath --watch app.rp        Re-run on file changes
+  echo 'log "hi"' | robinpath    Pipe script via stdin
+
+FILE EXTENSIONS:
+  .rp, .robin        Both recognized (auto-resolved without extension)
+
+MODULES (built-in):
+  math      Mathematical operations (add, subtract, multiply, ...)
+  string    String manipulation (length, slice, split, ...)
+  array     Array operations (push, pop, map, filter, ...)
+  object    Object operations (keys, values, merge, ...)
+  json      JSON parse/stringify
+  time      Time operations (sleep, now, format)
+  random    Random number generation (int, float, pick, shuffle)
+  fetch     HTTP requests (get, post, put, delete)
+  test      Test assertions (assert, assertEqual, assertTrue, ...)
+  dom       DOM manipulation (browser only)
+
+TEST WRITING:
+  Use the test module for assertions:
+    test.assert ($value)
+    test.assertEqual ($actual) ($expected)
+    test.assertTrue ($value)
+    test.assertContains ($array) ($item)
+
+  Name test files with .test.rp extension.
+  Run with: robinpath test
+
+CONFIGURATION:
+  Install dir:  ~/.robinpath/bin/
+  History file: ~/.robinpath/history
+
+For more: https://github.com/user/robinpath-cli`);
+}
+function showCommandHelp(command) {
+  const helpPages = {
+    fmt: `robinpath fmt \u2014 Code formatter
+
+USAGE:
+  robinpath fmt <file|dir> [flags]
+
+DESCRIPTION:
+  Format RobinPath source code to a canonical style (like gofmt).
+  Normalizes syntax: 'set $x as 1' becomes '$x = 1', indentation
+  is standardized, etc.
+
+FLAGS:
+  -w, --write    Overwrite file(s) in place
+  --check        Exit code 1 if any file is not formatted (for CI)
+
+  Without flags, formatted code is printed to stdout.
+
+EXAMPLES:
+  robinpath fmt app.rp            Print formatted code to stdout
+  robinpath fmt -w app.rp         Format and overwrite file
+  robinpath fmt --check app.rp    Check if formatted (CI mode)
+  robinpath fmt -w src/           Format all .rp/.robin files in directory
+  robinpath fmt --check .         Check all files in current directory`,
+    check: `robinpath check \u2014 Syntax checker
+
+USAGE:
+  robinpath check <file>
+
+DESCRIPTION:
+  Parse a RobinPath script and report syntax errors without executing.
+  Shows rich error context with line numbers and caret pointers.
+
+EXIT CODES:
+  0    No syntax errors
+  2    Syntax error found
+
+EXAMPLES:
+  robinpath check app.rp          Check single file
+  robinpath check hello           Auto-resolves hello.rp or hello.robin`,
+    ast: `robinpath ast \u2014 AST dump
+
+USAGE:
+  robinpath ast <file> [flags]
+
+DESCRIPTION:
+  Parse a RobinPath script and output its Abstract Syntax Tree as JSON.
+  Useful for tooling, editor integrations, and debugging.
+
+FLAGS:
+  --compact      Output minified JSON (no indentation)
+
+EXAMPLES:
+  robinpath ast app.rp            Pretty-printed AST
+  robinpath ast app.rp --compact  Minified AST`,
+    test: `robinpath test \u2014 Test runner
+
+USAGE:
+  robinpath test [dir|file]
+
+DESCRIPTION:
+  Discover and run *.test.rp test files. Uses the built-in 'test'
+  module for assertions. Each test file runs in an isolated RobinPath
+  instance. If any assertion fails, the file is marked FAIL.
+
+  Without arguments, searches the current directory recursively.
+
+EXIT CODES:
+  0    All tests passed
+  1    One or more tests failed
+
+OUTPUT FORMAT:
+  PASS  tests/math.test.rp
+  FAIL  tests/string.test.rp
+    Error: assertEqual failed (Expected "hello", got "world")
+
+  2 tests: 1 passed, 1 failed
+
+ASSERTIONS (test module):
+  test.assert ($value)            Assert value is truthy
+  test.assertEqual ($a) ($b)      Assert a equals b
+  test.assertTrue ($value)        Assert value is true
+  test.assertFalse ($value)       Assert value is false
+  test.assertContains ($arr) ($v) Assert array contains value
+
+EXAMPLES:
+  robinpath test                  Run all tests in current dir
+  robinpath test tests/           Run tests in specific dir
+  robinpath test my.test.rp       Run a single test file`,
+    install: `robinpath install \u2014 System installation
+
+USAGE:
+  robinpath install
+
+DESCRIPTION:
+  Copy the robinpath binary to ~/.robinpath/bin/ and add it to
+  your system PATH. After installation, restart your terminal
+  and run 'robinpath --version' to verify.`,
+    uninstall: `robinpath uninstall \u2014 System removal
+
+USAGE:
+  robinpath uninstall
+
+DESCRIPTION:
+  Remove ~/.robinpath/ and clean the PATH entry. After uninstalling,
+  restart your terminal.`
+  };
+  const page = helpPages[command];
+  if (page) {
+    console.log(page);
+  } else {
+    console.error(color.red("Error:") + ` Unknown command: ${command}`);
+    console.error("Available commands: fmt, check, ast, test, install, uninstall");
+    process.exit(2);
+  }
+}
+function getHistoryPath() {
+  return (0, import_node_path.join)(getRobinPathHome(), "history");
+}
+function loadHistory() {
+  const historyPath = getHistoryPath();
+  try {
+    if ((0, import_node_fs.existsSync)(historyPath)) {
+      const content = (0, import_node_fs.readFileSync)(historyPath, "utf-8");
+      return content.split("\n").filter((line) => line.trim()).reverse();
+    }
+  } catch {
+  }
+  return [];
+}
+function appendHistory(line) {
+  const historyPath = getHistoryPath();
+  try {
+    const dir = getRobinPathHome();
+    if (!(0, import_node_fs.existsSync)(dir)) {
+      (0, import_node_fs.mkdirSync)(dir, { recursive: true });
+    }
+    (0, import_node_fs.appendFileSync)(historyPath, line + "\n", "utf-8");
+    try {
+      const content = (0, import_node_fs.readFileSync)(historyPath, "utf-8");
+      const lines = content.split("\n").filter((l) => l.trim());
+      if (lines.length > 1e3) {
+        const trimmed = lines.slice(lines.length - 1e3);
+        (0, import_node_fs.writeFileSync)(historyPath, trimmed.join("\n") + "\n", "utf-8");
+      }
+    } catch {
+    }
+  } catch {
+  }
+}
+async function startREPL() {
   const rp = new xe({ threadControl: true });
   rp.createThread("default");
+  const sessionLines = [];
   function getPrompt() {
     const thread = rp.getCurrentThread();
     if (!thread) return "> ";
@@ -14066,14 +14576,17 @@ async function main() {
     return line.trimEnd().endsWith("\\");
   }
   let accumulatedLines = [];
+  const history = loadHistory();
   const rl = (0, import_node_readline.createInterface)({
     input: process.stdin,
     output: process.stdout,
-    prompt: getPrompt()
+    prompt: getPrompt(),
+    history,
+    historySize: 1e3
   });
-  console.log(`RobinPath v${Sn}`);
-  console.log('Type "help" for commands, "exit" to quit');
-  console.log("");
+  log(`RobinPath v${Sn}`);
+  log('Type "help" for commands, "exit" to quit');
+  log("");
   rl.prompt();
   rl.on("line", async (line) => {
     const trimmed = line.trim();
@@ -14082,21 +14595,23 @@ async function main() {
       return;
     }
     if (trimmed === "exit" || trimmed === "quit" || trimmed === ".exit") {
-      console.log("Goodbye!");
+      log("Goodbye!");
       process.exit(0);
     }
     if (accumulatedLines.length === 0 && (trimmed === "help" || trimmed === ".help")) {
-      console.log("");
-      console.log("RobinPath REPL Commands:");
-      console.log("  exit, quit     Exit the REPL");
-      console.log("  help           Show this help");
-      console.log("  clear          Clear the screen");
-      console.log("  ..             Show all available commands");
-      console.log("");
-      console.log("Write RobinPath code and press Enter to execute.");
-      console.log("Multi-line blocks (if/def/for/do) are supported.");
-      console.log("Use \\ at end of line for line continuation.");
-      console.log("");
+      log("");
+      log("RobinPath REPL Commands:");
+      log("  exit, quit     Exit the REPL");
+      log("  help           Show this help");
+      log("  clear          Clear the screen");
+      log("  ..             Show all available commands");
+      log("  .load <file>   Load and execute a script file");
+      log("  .save <file>   Save session to file");
+      log("");
+      log("Write RobinPath code and press Enter to execute.");
+      log("Multi-line blocks (if/def/for/do) are supported.");
+      log("Use \\ at end of line for line continuation.");
+      log("");
       rl.prompt();
       return;
     }
@@ -14108,7 +14623,54 @@ async function main() {
     if (accumulatedLines.length === 0 && trimmed === "..") {
       const thread = rp.getCurrentThread();
       const commands = thread ? thread.getAvailableCommands() : rp.getAvailableCommands();
-      console.log(JSON.stringify(commands, null, 2));
+      log(JSON.stringify(commands, null, 2));
+      rl.prompt();
+      return;
+    }
+    if (accumulatedLines.length === 0 && trimmed.startsWith(".load ")) {
+      const fileArg = trimmed.slice(6).trim();
+      if (!fileArg) {
+        console.error(color.red("Error:") + " .load requires a file argument");
+        rl.prompt();
+        return;
+      }
+      const loadPath = resolveScriptPath(fileArg);
+      if (!loadPath) {
+        console.error(color.red("Error:") + ` File not found: ${fileArg}`);
+        rl.prompt();
+        return;
+      }
+      try {
+        const script = (0, import_node_fs.readFileSync)(loadPath, "utf-8");
+        log(color.dim(`Loading ${fileArg}...`));
+        const thread = rp.getCurrentThread();
+        if (thread) {
+          await thread.executeScript(script);
+        } else {
+          await rp.executeScript(script);
+        }
+        log(color.green("Loaded") + ` ${fileArg}`);
+      } catch (error) {
+        displayError(error, null);
+      }
+      rl.setPrompt(getPrompt());
+      rl.prompt();
+      return;
+    }
+    if (accumulatedLines.length === 0 && trimmed.startsWith(".save ")) {
+      const fileArg = trimmed.slice(6).trim();
+      if (!fileArg) {
+        console.error(color.red("Error:") + " .save requires a file argument");
+        rl.prompt();
+        return;
+      }
+      try {
+        const content = sessionLines.join("\n") + "\n";
+        (0, import_node_fs.writeFileSync)((0, import_node_path.resolve)(fileArg), content, "utf-8");
+        log(color.green("Saved") + ` ${sessionLines.length} lines to ${fileArg}`);
+      } catch (error) {
+        console.error(color.red("Error:") + ` Could not save: ${error.message}`);
+      }
       rl.prompt();
       return;
     }
@@ -14140,6 +14702,8 @@ async function main() {
       }
       const finalScript = accumulatedLines.length > 0 ? accumulatedLines.join("\n") : line;
       accumulatedLines = [];
+      appendHistory(finalScript);
+      sessionLines.push(finalScript);
       if (thread) {
         await thread.executeScript(finalScript);
       } else {
@@ -14147,29 +14711,121 @@ async function main() {
       }
       rl.setPrompt(getPrompt());
     } catch (error) {
-      console.error(`Error: ${error.message}`);
+      displayError(error, null);
       accumulatedLines = [];
       rl.setPrompt(getPrompt());
     }
     rl.prompt();
   });
   rl.on("close", () => {
-    console.log("\nGoodbye!");
+    log("\nGoodbye!");
     process.exit(0);
   });
   process.on("SIGINT", () => {
     if (accumulatedLines.length > 0) {
-      console.log("\nBlock cancelled.");
+      log("\nBlock cancelled.");
       accumulatedLines = [];
       rl.setPrompt(getPrompt());
       rl.prompt();
     } else {
-      console.log("\nGoodbye!");
+      log("\nGoodbye!");
       process.exit(0);
     }
   });
 }
+async function main() {
+  const args = process.argv.slice(2);
+  FLAG_QUIET = args.includes("--quiet") || args.includes("-q");
+  FLAG_VERBOSE = args.includes("--verbose");
+  if (args.includes("--version") || args.includes("-v")) {
+    console.log(`robinpath v${Sn}`);
+    return;
+  }
+  if (args.includes("--help") || args.includes("-h")) {
+    showMainHelp();
+    return;
+  }
+  const command = args[0];
+  if (command === "help") {
+    const subCommand = args[1];
+    if (subCommand) {
+      showCommandHelp(subCommand);
+    } else {
+      showMainHelp();
+    }
+    return;
+  }
+  if (command === "install") {
+    handleInstall();
+    return;
+  }
+  if (command === "uninstall") {
+    handleUninstall();
+    return;
+  }
+  if (command === "check") {
+    await handleCheck(args.slice(1));
+    return;
+  }
+  if (command === "ast") {
+    await handleAST(args.slice(1));
+    return;
+  }
+  if (command === "fmt") {
+    await handleFmt(args.slice(1));
+    return;
+  }
+  if (command === "test") {
+    await handleTest(args.slice(1));
+    return;
+  }
+  const evalIdx = args.indexOf("-e") !== -1 ? args.indexOf("-e") : args.indexOf("--eval");
+  if (evalIdx !== -1) {
+    const script = args[evalIdx + 1];
+    if (!script) {
+      console.error(color.red("Error:") + " -e requires a script argument");
+      process.exit(2);
+    }
+    await runScript(script);
+    return;
+  }
+  const dashDashIdx = args.indexOf("--");
+  let fileArg;
+  if (dashDashIdx !== -1) {
+    fileArg = args[dashDashIdx + 1];
+  } else {
+    const flagsToSkip = /* @__PURE__ */ new Set(["-q", "--quiet", "--verbose"]);
+    fileArg = args.find((a) => !a.startsWith("-") && !flagsToSkip.has(a));
+  }
+  if (fileArg) {
+    const filePath = resolveScriptPath(fileArg);
+    if (!filePath) {
+      console.error(color.red("Error:") + ` File not found: ${fileArg}`);
+      if (!(0, import_node_path.extname)(fileArg)) {
+        console.error(`  (also tried ${fileArg}.rp and ${fileArg}.robin)`);
+      }
+      process.exit(2);
+    }
+    const script = (0, import_node_fs.readFileSync)(filePath, "utf-8");
+    const hasWatch = args.includes("--watch");
+    const hasShortWatch = args.includes("-w") && command !== "fmt";
+    if (hasWatch || hasShortWatch) {
+      await handleWatch(filePath, script);
+      return;
+    }
+    await runScript(script, filePath);
+    return;
+  }
+  if (!process.stdin.isTTY) {
+    const script = await readStdin();
+    if (script.trim()) {
+      await runScript(script);
+    }
+    return;
+  }
+  await startREPL();
+}
 main().catch((err) => {
-  console.error(`Fatal: ${err.message}`);
+  console.error(color.red("Fatal:") + ` ${err.message}`);
   process.exit(1);
 });
