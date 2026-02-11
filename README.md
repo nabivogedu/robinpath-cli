@@ -1,38 +1,83 @@
 # RobinPath CLI
 
-Standalone command-line binary for the [RobinPath](https://github.com/nabivogedu/robinpath-cli) scripting language. No runtime dependencies needed — just one executable.
+Standalone command-line binary for the RobinPath scripting language. No runtime dependencies needed — just one executable.
 
-## Quick Install
+## Install
 
-### Windows (PowerShell)
+### Windows
+
+Open **PowerShell** and run:
 
 ```powershell
-irm https://robinpath.com/install.ps1 | iex
+irm https://raw.githubusercontent.com/nabivogedu/robinpath-cli/main/install.ps1 | iex
 ```
 
-### macOS / Linux
-
-```sh
-curl -fsSL https://robinpath.com/install.sh | sh
-```
-
-### Manual Install
-
-1. Download `robinpath.exe` (Windows) or `robinpath` (macOS/Linux) from the [Releases](https://github.com/nabivogedu/robinpath-cli/releases) page.
-2. Run the self-installer:
-
-```
-robinpath install
-```
-
-This copies the binary to `~/.robinpath/bin/` and adds it to your system PATH automatically.
-
-3. Restart your terminal.
-4. Verify:
+Then **restart your terminal** and verify:
 
 ```
 robinpath --version
 ```
+
+### macOS
+
+Open **Terminal** and run:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nabivogedu/robinpath-cli/main/install.sh | sh
+```
+
+Then restart your terminal or run:
+
+```sh
+source ~/.zshrc
+```
+
+Verify:
+
+```
+robinpath --version
+```
+
+> Works on both Apple Silicon (M1/M2/M3/M4) and Intel Macs.
+
+### Linux
+
+Open a terminal and run:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nabivogedu/robinpath-cli/main/install.sh | sh
+```
+
+Then restart your terminal or run:
+
+```sh
+source ~/.bashrc
+```
+
+Verify:
+
+```
+robinpath --version
+```
+
+### Manual Install
+
+If you prefer to install manually:
+
+1. Download the binary for your OS from the [Releases](https://github.com/nabivogedu/robinpath-cli/releases) page:
+   - **Windows** — `robinpath-windows-x64.exe`
+   - **macOS** — `robinpath-macos-arm64`
+   - **Linux** — `robinpath-linux-x64`
+
+2. Run the self-installer:
+
+```
+./robinpath install
+```
+
+This copies the binary to `~/.robinpath/bin/` and adds it to your PATH automatically.
+
+3. Restart your terminal.
 
 ## Uninstall
 
@@ -68,17 +113,17 @@ robinpath -e "log \"Hello World\""
 
 ### Pipe from stdin
 
-```
+```sh
 echo 'log "Hello"' | robinpath
 ```
 
 ### Interactive REPL
 
-Just run `robinpath` with no arguments:
+Run `robinpath` with no arguments to start the REPL:
 
 ```
 $ robinpath
-RobinPath v0.30.0
+RobinPath v0.40.0
 Type "help" for commands, "exit" to quit
 
 default> log "Hello!"
@@ -145,33 +190,11 @@ robinpath -v
 | macOS   | `~/.robinpath/bin/`                 |
 | Linux   | `~/.robinpath/bin/`                 |
 
-## Building from Source
+## Supported Platforms
 
-Requires Node.js 22+.
-
-```sh
-# 1. Build the robinpath engine (from workspace root)
-cd robinpath && npm run build && cd ../robinpath-cli
-
-# 2. Bundle into single file
-npx esbuild cli-entry.js --bundle --platform=node --format=cjs --target=node22 --outfile=dist/robinpath-cli.cjs
-
-# 3. Generate SEA blob
-node --experimental-sea-config sea-config.json
-
-# 4. Create the binary
-# Windows:
-cp "$(node -e "process.stdout.write(process.execPath)")" dist/robinpath.exe
-npx postject dist/robinpath.exe NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
-
-# macOS/Linux:
-cp "$(node -e "process.stdout.write(process.execPath)")" dist/robinpath
-npx postject dist/robinpath NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
-chmod +x dist/robinpath
-```
-
-Or use the build script (macOS/Linux):
-
-```sh
-./build.sh
-```
+| Platform         | Binary                      | Runner       |
+|------------------|-----------------------------|--------------|
+| Windows x64      | `robinpath-windows-x64.exe` | Free         |
+| Linux x64        | `robinpath-linux-x64`       | Free         |
+| macOS ARM64      | `robinpath-macos-arm64`     | Free         |
+| macOS Intel x64  | Via Rosetta (uses ARM64)    | —            |
