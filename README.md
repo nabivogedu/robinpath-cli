@@ -1,6 +1,6 @@
 # RobinPath CLI
 
-Standalone command-line binary for the [RobinPath](https://github.com/wiredwp/robinpath-workspace) scripting language. No runtime dependencies needed — just one executable.
+Standalone command-line binary for the [RobinPath](https://github.com/nabivogedu/robinpath-cli) scripting language. No runtime dependencies needed — just one executable.
 
 ## Quick Install
 
@@ -18,7 +18,7 @@ curl -fsSL https://robinpath.com/install.sh | sh
 
 ### Manual Install
 
-1. Download `robinpath.exe` (Windows) or `robinpath` (macOS/Linux) from the [Releases](https://github.com/wiredwp/robinpath-workspace/releases) page.
+1. Download `robinpath.exe` (Windows) or `robinpath` (macOS/Linux) from the [Releases](https://github.com/nabivogedu/robinpath-cli/releases) page.
 2. Run the self-installer:
 
 ```

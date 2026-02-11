@@ -2,7 +2,7 @@
 # Usage: irm https://robinpath.com/install.ps1 | iex
 $ErrorActionPreference = "Stop"
 
-$Repo = "wiredwp/robinpath-workspace"
+$Repo = "nabivogedu/robinpath-cli"
 $InstallDir = "$env:USERPROFILE\.robinpath\bin"
 $BinaryName = "robinpath-windows-x64.exe"
 

@@ -3,7 +3,7 @@
 # Usage: curl -fsSL https://robinpath.com/install.sh | sh
 set -e
 
-REPO="wiredwp/robinpath-workspace"
+REPO="nabivogedu/robinpath-cli"
 INSTALL_DIR="$HOME/.robinpath/bin"
 
 # Colors
