@@ -1,0 +1,59 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            name: robinpath-windows-x64.exe
+          - os: ubuntu-latest
+            name: robinpath-linux-x64
+          - os: macos-latest
+            name: robinpath-macos-arm64
+          - os: macos-13
+            name: robinpath-macos-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Generate SEA blob
+        run: node --experimental-sea-config sea-config.json
+
+      - name: Create binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item (Get-Command node).Source -Destination "dist/${{ matrix.name }}"
+          npx postject "dist/${{ matrix.name }}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+
+      - name: Create binary (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cp "$(which node)" "dist/${{ matrix.name }}"
+          npx postject "dist/${{ matrix.name }}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+          chmod +x "dist/${{ matrix.name }}"
+
+      - name: Verify binary
+        shell: bash
+        run: |
+          ./dist/${{ matrix.name }} --version
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.name }}
