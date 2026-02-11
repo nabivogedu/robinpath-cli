@@ -41,11 +41,20 @@ jobs:
           Copy-Item (Get-Command node).Source -Destination "dist/${{ matrix.name }}"
           npx postject "dist/${{ matrix.name }}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
 
-      - name: Create binary (Linux/macOS)
-        if: runner.os != 'Windows'
+      - name: Create binary (Linux)
+        if: runner.os == 'Linux'
         run: |
           cp "$(which node)" "dist/${{ matrix.name }}"
           npx postject "dist/${{ matrix.name }}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+          chmod +x "dist/${{ matrix.name }}"
+
+      - name: Create binary (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cp "$(which node)" "dist/${{ matrix.name }}"
+          codesign --remove-signature "dist/${{ matrix.name }}"
+          npx postject "dist/${{ matrix.name }}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+          codesign -s - "dist/${{ matrix.name }}"
           chmod +x "dist/${{ matrix.name }}"
 
       - name: Verify binary
