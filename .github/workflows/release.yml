@@ -53,7 +53,7 @@ jobs:
         run: |
           cp "$(which node)" "dist/${{ matrix.name }}"
           codesign --remove-signature "dist/${{ matrix.name }}"
-          npx postject "dist/${{ matrix.name }}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+          npx postject "dist/${{ matrix.name }}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 --macho-segment-name NODE_SEA
           codesign -s - "dist/${{ matrix.name }}"
           chmod +x "dist/${{ matrix.name }}"
 
