@@ -13875,7 +13875,7 @@ function log(...args) {
 function logVerbose(...args) {
   if (FLAG_VERBOSE) console.error("[verbose]", ...args);
 }
-var isTTY = process.stderr.isTTY;
+var isTTY = process.stdout.isTTY || process.stderr.isTTY;
 var color = {
   red: (s) => isTTY ? `\x1B[31m${s}\x1B[0m` : s,
   green: (s) => isTTY ? `\x1B[32m${s}\x1B[0m` : s,
@@ -14020,15 +14020,20 @@ function readStdin() {
   });
 }
 async function handleCheck(args) {
+  const jsonOutput = args.includes("--json");
   const fileArg = args.find((a) => !a.startsWith("-"));
   if (!fileArg) {
     console.error(color.red("Error:") + " check requires a file argument");
-    console.error("Usage: robinpath check <file>");
+    console.error("Usage: robinpath check <file> [--json]");
     process.exit(2);
   }
   const filePath = resolveScriptPath(fileArg);
   if (!filePath) {
-    console.error(color.red("Error:") + ` File not found: ${fileArg}`);
+    if (jsonOutput) {
+      console.log(JSON.stringify({ ok: false, file: fileArg, error: `File not found: ${fileArg}` }));
+    } else {
+      console.error(color.red("Error:") + ` File not found: ${fileArg}`);
+    }
     process.exit(2);
   }
   const script = (0, import_node_fs.readFileSync)(filePath, "utf-8");
@@ -14040,15 +14045,31 @@ async function handleCheck(args) {
       const elapsed = (performance.now() - startTime).toFixed(1);
       logVerbose(`Parsed in ${elapsed}ms`);
     }
-    log(color.green("OK") + ` ${fileArg} \u2014 no syntax errors`);
+    if (jsonOutput) {
+      console.log(JSON.stringify({ ok: true, file: fileArg }));
+    } else {
+      log(color.green("OK") + ` ${fileArg} \u2014 no syntax errors`);
+    }
     process.exit(0);
   } catch (error) {
-    try {
-      const formatted = ut({ message: error.message, code: script });
-      console.error(color.red("Syntax error") + ` in ${fileArg}:
+    if (jsonOutput) {
+      const lineMatch = error.message.match(/line (\d+)/i);
+      const colMatch = error.message.match(/column (\d+)/i);
+      console.log(JSON.stringify({
+        ok: false,
+        file: fileArg,
+        error: error.message,
+        line: lineMatch ? parseInt(lineMatch[1]) : null,
+        column: colMatch ? parseInt(colMatch[1]) : null
+      }));
+    } else {
+      try {
+        const formatted = ut({ message: error.message, code: script });
+        console.error(color.red("Syntax error") + ` in ${fileArg}:
 ${formatted}`);
-    } catch {
-      console.error(color.red("Syntax error") + ` in ${fileArg}: ${error.message}`);
+      } catch {
+        console.error(color.red("Syntax error") + ` in ${fileArg}: ${error.message}`);
+      }
     }
     process.exit(2);
   }
@@ -14084,10 +14105,11 @@ async function handleAST(args) {
 async function handleFmt(args) {
   const writeInPlace = args.includes("--write") || args.includes("-w");
   const checkOnly = args.includes("--check");
+  const diffMode = args.includes("--diff");
   const fileArg = args.find((a) => !a.startsWith("-"));
   if (!fileArg) {
     console.error(color.red("Error:") + " fmt requires a file or directory argument");
-    console.error("Usage: robinpath fmt <file|dir> [--write] [--check]");
+    console.error("Usage: robinpath fmt <file|dir> [--write] [--check] [--diff]");
     process.exit(2);
   }
   const files = collectRPFiles(fileArg);
@@ -14112,6 +14134,12 @@ async function handleFmt(args) {
         } else {
           log((0, import_node_path.relative)(process.cwd(), filePath) + " \u2014 " + color.green("OK"));
         }
+      } else if (diffMode) {
+        if (formatted !== script) {
+          const relPath = (0, import_node_path.relative)(process.cwd(), filePath);
+          console.log(simpleDiff(relPath, script, formatted));
+          hasUnformatted = true;
+        }
       } else if (writeInPlace) {
         if (formatted !== script) {
           (0, import_node_fs.writeFileSync)(filePath, formatted, "utf-8");
@@ -14127,9 +14155,50 @@ async function handleFmt(args) {
       hasUnformatted = true;
     }
   }
-  if (checkOnly && hasUnformatted) {
+  if ((checkOnly || diffMode) && hasUnformatted) {
     process.exit(1);
   }
+}
+function simpleDiff(filePath, original, formatted) {
+  const origLines = original.split("\n");
+  const fmtLines = formatted.split("\n");
+  const lines = [`--- ${filePath}`, `+++ ${filePath} (formatted)`];
+  let i = 0, j2 = 0;
+  while (i < origLines.length || j2 < fmtLines.length) {
+    if (i < origLines.length && j2 < fmtLines.length && origLines[i] === fmtLines[j2]) {
+      i++;
+      j2++;
+      continue;
+    }
+    const startI = i, startJ = j2;
+    let matchFound = false;
+    for (let look = 1; look < 10 && !matchFound; look++) {
+      if (i + look < origLines.length && j2 < fmtLines.length && origLines[i + look] === fmtLines[j2]) {
+        matchFound = true;
+        break;
+      }
+      if (j2 + look < fmtLines.length && i < origLines.length && origLines[i] === fmtLines[j2 + look]) {
+        matchFound = true;
+        break;
+      }
+    }
+    if (!matchFound) {
+      if (i < origLines.length) lines.push(color.red(`- ${origLines[i]}`));
+      if (j2 < fmtLines.length) lines.push(color.green(`+ ${fmtLines[j2]}`));
+      i++;
+      j2++;
+    } else {
+      while (i < origLines.length && (j2 >= fmtLines.length || origLines[i] !== fmtLines[j2])) {
+        lines.push(color.red(`- ${origLines[i]}`));
+        i++;
+      }
+      while (j2 < fmtLines.length && (i >= origLines.length || origLines[i] !== fmtLines[j2])) {
+        lines.push(color.green(`+ ${fmtLines[j2]}`));
+        j2++;
+      }
+    }
+  }
+  return lines.join("\n");
 }
 async function formatScript(script) {
   const parser = new W(script);
@@ -14229,6 +14298,7 @@ function collectRPFilesRecursive(dir) {
   return results;
 }
 async function handleTest(args) {
+  const jsonOutput = args.includes("--json");
   const targetArg = args.find((a) => !a.startsWith("-"));
   const searchPath = targetArg || ".";
   let testFiles;
@@ -14239,12 +14309,16 @@ async function handleTest(args) {
     testFiles = collectTestFiles(searchPath);
   }
   if (testFiles.length === 0) {
-    log(color.yellow("No *.test.rp files found") + (targetArg ? ` in ${targetArg}` : ""));
+    if (jsonOutput) {
+      console.log(JSON.stringify({ passed: 0, failed: 0, total: 0, results: [] }));
+    } else {
+      log(color.yellow("No *.test.rp files found") + (targetArg ? ` in ${targetArg}` : ""));
+    }
     process.exit(0);
   }
   let passed = 0;
   let failed = 0;
-  const failures = [];
+  const results = [];
   const startTime = performance.now();
   for (const filePath of testFiles) {
     const relPath = (0, import_node_path.relative)(process.cwd(), filePath);
@@ -14253,26 +14327,33 @@ async function handleTest(args) {
     try {
       await rp.executeScript(script);
       passed++;
-      log(color.green("PASS") + "  " + relPath);
+      results.push({ file: relPath, status: "pass" });
+      if (!jsonOutput) log(color.green("PASS") + "  " + relPath);
     } catch (error) {
       failed++;
-      log(color.red("FAIL") + "  " + relPath);
-      let detail = "  " + error.message;
-      if (error.__formattedMessage) {
-        detail = "  " + error.__formattedMessage.split("\n").join("\n  ");
+      results.push({ file: relPath, status: "fail", error: error.message });
+      if (!jsonOutput) {
+        log(color.red("FAIL") + "  " + relPath);
+        let detail = "  " + error.message;
+        if (error.__formattedMessage) {
+          detail = "  " + error.__formattedMessage.split("\n").join("\n  ");
+        }
+        log(color.dim(detail));
       }
-      log(color.dim(detail));
-      failures.push({ file: relPath, error: error.message });
     }
   }
   const total = passed + failed;
   const elapsed = (performance.now() - startTime).toFixed(0);
-  log("");
-  const summary = `${total} test${total !== 1 ? "s" : ""}: ${passed} passed, ${failed} failed`;
-  if (failed > 0) {
-    log(color.red(summary) + color.dim(` (${elapsed}ms)`));
+  if (jsonOutput) {
+    console.log(JSON.stringify({ passed, failed, total, duration_ms: parseInt(elapsed), results }));
   } else {
-    log(color.green(summary) + color.dim(` (${elapsed}ms)`));
+    log("");
+    const summary = `${total} test${total !== 1 ? "s" : ""}: ${passed} passed, ${failed} failed`;
+    if (failed > 0) {
+      log(color.red(summary) + color.dim(` (${elapsed}ms)`));
+    } else {
+      log(color.green(summary) + color.dim(` (${elapsed}ms)`));
+    }
   }
   process.exit(failed > 0 ? 1 : 0);
 }
@@ -14338,10 +14419,10 @@ USAGE:
 
 COMMANDS:
   <file.rp>          Run a RobinPath script
-  fmt <file|dir>     Format a script (--write to overwrite, --check for CI)
-  check <file>       Check syntax without executing
+  fmt <file|dir>     Format a script (--write to overwrite, --check for CI, --diff)
+  check <file>       Check syntax without executing (--json for machine output)
   ast <file>         Dump AST as JSON (--compact for minified)
-  test [dir|file]    Run *.test.rp test files
+  test [dir|file]    Run *.test.rp test files (--json for machine output)
   install            Install robinpath to system PATH
   uninstall          Remove robinpath from system
 
@@ -14407,7 +14488,7 @@ CONFIGURATION:
   Install dir:  ~/.robinpath/bin/
   History file: ~/.robinpath/history
 
-For more: https://github.com/user/robinpath-cli`);
+For more: https://github.com/robinpath/robinpath-cli`);
 }
 function showCommandHelp(command) {
   const helpPages = {
@@ -14424,6 +14505,7 @@ DESCRIPTION:
 FLAGS:
   -w, --write    Overwrite file(s) in place
   --check        Exit code 1 if any file is not formatted (for CI)
+  --diff         Show what would change (unified diff output)
 
   Without flags, formatted code is printed to stdout.
 
@@ -14431,16 +14513,22 @@ EXAMPLES:
   robinpath fmt app.rp            Print formatted code to stdout
   robinpath fmt -w app.rp         Format and overwrite file
   robinpath fmt --check app.rp    Check if formatted (CI mode)
+  robinpath fmt --diff app.rp     Show diff of changes
   robinpath fmt -w src/           Format all .rp/.robin files in directory
   robinpath fmt --check .         Check all files in current directory`,
     check: `robinpath check \u2014 Syntax checker
 
 USAGE:
-  robinpath check <file>
+  robinpath check <file> [--json]
 
 DESCRIPTION:
   Parse a RobinPath script and report syntax errors without executing.
   Shows rich error context with line numbers and caret pointers.
+
+FLAGS:
+  --json         Output result as JSON (for AI agents and tooling)
+                 Success: {"ok":true,"file":"app.rp"}
+                 Error:   {"ok":false,"file":"app.rp","error":"...","line":5,"column":3}
 
 EXIT CODES:
   0    No syntax errors
@@ -14448,6 +14536,7 @@ EXIT CODES:
 
 EXAMPLES:
   robinpath check app.rp          Check single file
+  robinpath check app.rp --json   Machine-readable output
   robinpath check hello           Auto-resolves hello.rp or hello.robin`,
     ast: `robinpath ast \u2014 AST dump
 
@@ -14467,7 +14556,7 @@ EXAMPLES:
     test: `robinpath test \u2014 Test runner
 
 USAGE:
-  robinpath test [dir|file]
+  robinpath test [dir|file] [--json]
 
 DESCRIPTION:
   Discover and run *.test.rp test files. Uses the built-in 'test'
@@ -14476,16 +14565,15 @@ DESCRIPTION:
 
   Without arguments, searches the current directory recursively.
 
+FLAGS:
+  --json         Output results as JSON (for AI agents and CI)
+                 {"passed":1,"failed":1,"total":2,"duration_ms":42,
+                  "results":[{"file":"...","status":"pass"},
+                             {"file":"...","status":"fail","error":"..."}]}
+
 EXIT CODES:
   0    All tests passed
   1    One or more tests failed
-
-OUTPUT FORMAT:
-  PASS  tests/math.test.rp
-  FAIL  tests/string.test.rp
-    Error: assertEqual failed (Expected "hello", got "world")
-
-  2 tests: 1 passed, 1 failed
 
 ASSERTIONS (test module):
   test.assert ($value)            Assert value is truthy
@@ -14496,6 +14584,7 @@ ASSERTIONS (test module):
 
 EXAMPLES:
   robinpath test                  Run all tests in current dir
+  robinpath test --json           Machine-readable results
   robinpath test tests/           Run tests in specific dir
   robinpath test my.test.rp       Run a single test file`,
     install: `robinpath install \u2014 System installation

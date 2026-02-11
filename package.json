@@ -9,6 +9,6 @@
         "build": "npm run build:bundle && npm run build:blob"
     },
     "dependencies": {
-        "@robinpath/robinpath": "^0.30.0"
+        "@robinpath/robinpath": "^0.30.1"
     }
 }
