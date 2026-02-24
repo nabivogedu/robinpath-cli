@@ -13,6 +13,6 @@
         "rp": "cli-entry.js"
     },
     "dependencies": {
-        "@robinpath/robinpath": "^0.30.1"
+        "@wiredwp/robinpath": "^0.30.1"
     }
 }

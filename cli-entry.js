@@ -8,7 +8,7 @@ import { readFileSync, existsSync, mkdirSync, copyFileSync, rmSync, writeFileSyn
 import { resolve, extname, join, relative, dirname, basename } from 'node:path';
 import { execSync } from 'node:child_process';
 import { homedir, platform, tmpdir } from 'node:os';
-import { RobinPath, ROBINPATH_VERSION, Parser, Printer, LineIndexImpl, formatErrorWithContext } from '@robinpath/robinpath';
+import { RobinPath, ROBINPATH_VERSION, Parser, Printer, LineIndexImpl, formatErrorWithContext } from '@wiredwp/robinpath';
 
 // ============================================================================
 // Global flags
