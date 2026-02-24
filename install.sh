@@ -1,6 +1,6 @@
 #!/bin/sh
 # RobinPath installer for macOS and Linux
-# Usage: curl -fsSL https://robinpath.com/install.sh | sh
+# Usage: curl -fsSL https://dev.robinpath.com/install.sh | sh
 set -e
 
 REPO="nabivogedu/robinpath-cli"
@@ -69,6 +69,9 @@ mkdir -p "$INSTALL_DIR"
 echo "Downloading $BINARY_NAME..."
 curl -fsSL "$DOWNLOAD_URL" -o "$INSTALL_DIR/robinpath"
 chmod +x "$INSTALL_DIR/robinpath"
+
+# Create rp alias (symlink)
+ln -sf "$INSTALL_DIR/robinpath" "$INSTALL_DIR/rp"
 
 # Verify it works
 if "$INSTALL_DIR/robinpath" --version > /dev/null 2>&1; then

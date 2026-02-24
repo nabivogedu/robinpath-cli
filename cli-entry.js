@@ -504,7 +504,17 @@ async function handleWhoami() {
     log(color.bold('Local credentials:'));
     log(`  Email:   ${auth.email || color.dim('(none)')}`);
     log(`  Name:    ${auth.name || color.dim('(none)')}`);
-    log(`  Expires: ${auth.expiresAt ? new Date(auth.expiresAt * 1000).toLocaleDateString() : color.dim('(unknown)')}`);
+
+    if (auth.expiresAt) {
+        const msLeft = auth.expiresAt * 1000 - Date.now();
+        const daysLeft = Math.floor(msLeft / (1000 * 60 * 60 * 24));
+        const hoursLeft = Math.floor((msLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const expiryDate = new Date(auth.expiresAt * 1000).toLocaleDateString();
+        const remaining = daysLeft > 0 ? `${daysLeft}d ${hoursLeft}h remaining` : `${hoursLeft}h remaining`;
+        log(`  Expires: ${expiryDate} (${remaining})`);
+    } else {
+        log(`  Expires: ${color.dim('(unknown)')}`);
+    }
 
     // Try fetching server profile
     try {
@@ -1288,7 +1298,7 @@ CONFIGURATION:
   History file: ~/.robinpath/history
   Auth file:    ~/.robinpath/auth.json
 
-For more: https://github.com/robinpath/robinpath-cli`);
+For more: https://dev.robinpath.com`);
 }
 
 function showCommandHelp(command) {
@@ -1417,9 +1427,10 @@ USAGE:
   robinpath login
 
 DESCRIPTION:
-  Opens your browser to sign in via GitHub or Google. After
-  authentication, a long-lived token is stored in ~/.robinpath/auth.json.
-  The token is valid for 30 days.
+  Opens your browser to sign in via Google. A unique verification code
+  is displayed in your terminal — confirm it matches in the browser to
+  complete authentication. The token is stored in ~/.robinpath/auth.json
+  and is valid for 30 days.
 
 ENVIRONMENT:
   ROBINPATH_CLOUD_URL      Override the cloud app URL (default: https://dev.robinpath.com)
@@ -1762,9 +1773,13 @@ async function main() {
     FLAG_QUIET = args.includes('--quiet') || args.includes('-q');
     FLAG_VERBOSE = args.includes('--verbose');
 
+    // Detect invoked name (robinpath or rp)
+    const invokedAs = basename(process.execPath, '.exe').toLowerCase();
+    const cliName = invokedAs === 'rp' ? 'rp' : 'robinpath';
+
     // Handle flags (can appear anywhere)
     if (args.includes('--version') || args.includes('-v')) {
-        console.log(`robinpath v${ROBINPATH_VERSION}`);
+        console.log(`${cliName} v${ROBINPATH_VERSION}`);
         return;
     }
 

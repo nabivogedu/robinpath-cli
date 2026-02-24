@@ -1,11 +1,12 @@
 // cli-entry.js
 var import_node_readline = require("node:readline");
+var import_node_http = require("node:http");
 var import_node_fs = require("node:fs");
 var import_node_path = require("node:path");
 var import_node_child_process = require("node:child_process");
 var import_node_os = require("node:os");
 
-// node_modules/@robinpath/robinpath/dist/index.js
+// node_modules/@wiredwp/robinpath/dist/index.js
 var L = class {
   static parseString(e) {
     if (e.startsWith('"') && e.endsWith('"') || e.startsWith("'") && e.endsWith("'") || e.startsWith("`") && e.endsWith("`")) {
@@ -13890,11 +13891,41 @@ function getInstallDir() {
 function getRobinPathHome() {
   return (0, import_node_path.join)((0, import_node_os.homedir)(), ".robinpath");
 }
+async function checkForUpdates() {
+  try {
+    const res = await fetch("https://api.github.com/repos/nabivogedu/robinpath-cli/releases/latest");
+    const data = await res.json();
+    const latest = data.tag_name.replace("v", "");
+    if (latest !== Sn) {
+      console.log(`
+${color.yellow("\u26A1")} New version available: ${color.green("v" + latest)} (you have v${Sn})`);
+      console.log(`   Run ${color.cyan("robinpath update")} to upgrade
+`);
+    }
+  } catch {
+  }
+}
+function handleUpdate() {
+  const isWindows = (0, import_node_os.platform)() === "win32";
+  log(`Updating RobinPath...`);
+  try {
+    if (isWindows) {
+      (0, import_node_child_process.execSync)('powershell -NoProfile -Command "irm https://dev.robinpath.com/install.ps1 | iex"', { stdio: "inherit" });
+    } else {
+      (0, import_node_child_process.execSync)("curl -fsSL https://dev.robinpath.com/install.sh | sh", { stdio: "inherit" });
+    }
+  } catch (err) {
+    console.error(color.red("Update failed:") + ` ${err.message}`);
+    process.exit(1);
+  }
+}
 function handleInstall() {
   const installDir = getInstallDir();
   const isWindows = (0, import_node_os.platform)() === "win32";
   const exeName = isWindows ? "robinpath.exe" : "robinpath";
+  const rpName = isWindows ? "rp.exe" : "rp";
   const dest = (0, import_node_path.join)(installDir, exeName);
+  const rpDest = (0, import_node_path.join)(installDir, rpName);
   const src = process.execPath;
   if ((0, import_node_path.resolve)(src) === (0, import_node_path.resolve)(dest)) {
     log(`robinpath v${Sn} is already installed.`);
@@ -13902,9 +13933,11 @@ function handleInstall() {
   }
   (0, import_node_fs.mkdirSync)(installDir, { recursive: true });
   (0, import_node_fs.copyFileSync)(src, dest);
+  (0, import_node_fs.copyFileSync)(src, rpDest);
   if (!isWindows) {
     try {
       (0, import_node_fs.chmodSync)(dest, 493);
+      (0, import_node_fs.chmodSync)(rpDest, 493);
     } catch {
     }
   }
@@ -13933,6 +13966,7 @@ function handleInstall() {
   log("");
   log(`Installed robinpath v${Sn}`);
   log(`Location: ${dest}`);
+  log(`Alias:    ${rpDest} (use "rp" as shorthand)`);
   log("");
   log("Restart your terminal, then run:");
   log("  robinpath --version");
@@ -14018,6 +14052,341 @@ function readStdin() {
       resolve2(data);
     });
   });
+}
+var CLOUD_URL = process.env.ROBINPATH_CLOUD_URL || "https://dev.robinpath.com";
+var PLATFORM_URL = process.env.ROBINPATH_PLATFORM_URL || "https://robinpath-platform.nabivogedu.workers.dev";
+function getAuthPath() {
+  return (0, import_node_path.join)((0, import_node_os.homedir)(), ".robinpath", "auth.json");
+}
+function readAuth() {
+  try {
+    const authPath = getAuthPath();
+    if (!(0, import_node_fs.existsSync)(authPath)) return null;
+    const data = JSON.parse((0, import_node_fs.readFileSync)(authPath, "utf-8"));
+    if (!data.token) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+function writeAuth(data) {
+  const authPath = getAuthPath();
+  const dir = (0, import_node_path.dirname)(authPath);
+  if (!(0, import_node_fs.existsSync)(dir)) {
+    (0, import_node_fs.mkdirSync)(dir, { recursive: true });
+  }
+  (0, import_node_fs.writeFileSync)(authPath, JSON.stringify(data, null, 2), "utf-8");
+  if ((0, import_node_os.platform)() !== "win32") {
+    try {
+      (0, import_node_fs.chmodSync)(authPath, 384);
+    } catch {
+    }
+  }
+}
+function removeAuth() {
+  const authPath = getAuthPath();
+  if ((0, import_node_fs.existsSync)(authPath)) {
+    (0, import_node_fs.unlinkSync)(authPath);
+  }
+}
+function getAuthToken() {
+  const auth = readAuth();
+  if (!auth) return null;
+  if (auth.expiresAt && Date.now() >= auth.expiresAt * 1e3) {
+    return null;
+  }
+  return auth.token;
+}
+function requireAuth() {
+  const token = getAuthToken();
+  if (!token) {
+    console.error(color.red("Error:") + " Not logged in. Run " + color.cyan("robinpath login") + " to sign in.");
+    process.exit(1);
+  }
+  return token;
+}
+async function platformFetch(path, opts = {}) {
+  const token = requireAuth();
+  const headers = { Authorization: `Bearer ${token}`, ...opts.headers };
+  const url = `${PLATFORM_URL}${path}`;
+  const res = await fetch(url, { ...opts, headers });
+  return res;
+}
+function openBrowser(url) {
+  const plat = (0, import_node_os.platform)();
+  try {
+    if (plat === "win32") {
+      (0, import_node_child_process.execSync)(`start "" "${url}"`, { stdio: "ignore" });
+    } else if (plat === "darwin") {
+      (0, import_node_child_process.execSync)(`open "${url}"`, { stdio: "ignore" });
+    } else {
+      (0, import_node_child_process.execSync)(`xdg-open "${url}"`, { stdio: "ignore" });
+    }
+  } catch {
+    log(color.yellow("Could not open browser automatically."));
+    log(`Open this URL manually: ${url}`);
+  }
+}
+function decodeJWTPayload(token) {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = payload + "=".repeat((4 - payload.length % 4) % 4);
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf-8"));
+  } catch {
+    return null;
+  }
+}
+async function handleLogin() {
+  const existing = readAuth();
+  if (existing && existing.expiresAt && Date.now() < existing.expiresAt * 1e3) {
+    log(`Already logged in as ${color.cyan(existing.email)}`);
+    log(`Token expires ${new Date(existing.expiresAt * 1e3).toLocaleDateString()}`);
+    log(`Run ${color.cyan("robinpath logout")} to sign out first.`);
+    return;
+  }
+  return new Promise((resolveLogin) => {
+    const server = (0, import_node_http.createServer)((req, res) => {
+      const url = new URL(req.url, `http://localhost`);
+      if (url.pathname !== "/callback") {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
+      const token = url.searchParams.get("token");
+      const email = url.searchParams.get("email");
+      const name = url.searchParams.get("name");
+      if (!token) {
+        res.writeHead(400);
+        res.end("Missing token");
+        return;
+      }
+      const claims = decodeJWTPayload(token);
+      const expiresAt = claims?.exp || Math.floor(Date.now() / 1e3) + 30 * 24 * 60 * 60;
+      writeAuth({ token, email: email || "", name: name || "", expiresAt });
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`<!DOCTYPE html>
+<html>
+<head><title>RobinPath CLI</title></head>
+<body style="font-family:system-ui;background:#0a0a0a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
+<div style="text-align:center">
+<h1 style="font-size:24px;color:#22c55e">Signed in!</h1>
+<p style="color:#888">You can close this tab and return to your terminal.</p>
+</div>
+</body>
+</html>`);
+      server.close();
+      clearTimeout(timeout);
+      log(color.green("Logged in") + ` as ${color.cyan(email || "unknown")}`);
+      resolveLogin();
+    });
+    server.listen(0, "127.0.0.1", () => {
+      const port = server.address().port;
+      const callbackUrl = `http://localhost:${port}/callback`;
+      const code = "ROBIN-" + Array.from({ length: 4 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 31)]).join("");
+      const deviceName = require("os").hostname();
+      const deviceOS = process.platform;
+      const loginUrl = `${CLOUD_URL}/api/auth/cli?callback=${encodeURIComponent(callbackUrl)}&code=${encodeURIComponent(code)}&device=${encodeURIComponent(deviceName)}&os=${encodeURIComponent(deviceOS)}`;
+      log("Opening browser to sign in...");
+      log("");
+      log(`  Verification code: ${color.cyan(code)}`);
+      log(`  Device: ${color.dim(deviceName)} (${color.dim(deviceOS)})`);
+      log("");
+      log(color.dim("Confirm this code matches in your browser."));
+      log("");
+      log(color.dim(`If the browser doesn't open, visit:`));
+      log(color.cyan(loginUrl));
+      log("");
+      openBrowser(loginUrl);
+    });
+    const timeout = setTimeout(() => {
+      server.close();
+      console.error(color.red("Error:") + " Login timed out (5 minutes). Please try again.");
+      process.exit(1);
+    }, 5 * 60 * 1e3);
+  });
+}
+function handleLogout() {
+  const auth = readAuth();
+  if (auth) {
+    removeAuth();
+    log("Logged out.");
+  } else {
+    log("Not logged in.");
+  }
+}
+async function handleWhoami() {
+  const auth = readAuth();
+  if (!auth) {
+    log("Not logged in. Run " + color.cyan("robinpath login") + " to sign in.");
+    return;
+  }
+  if (auth.expiresAt && Date.now() >= auth.expiresAt * 1e3) {
+    log(color.yellow("Token expired.") + " Run " + color.cyan("robinpath login") + " to refresh.");
+    return;
+  }
+  log(color.bold("Local credentials:"));
+  log(`  Email:   ${auth.email || color.dim("(none)")}`);
+  log(`  Name:    ${auth.name || color.dim("(none)")}`);
+  log(`  Expires: ${auth.expiresAt ? new Date(auth.expiresAt * 1e3).toLocaleDateString() : color.dim("(unknown)")}`);
+  try {
+    const res = await platformFetch("/v1/me");
+    if (res.ok) {
+      const body = await res.json();
+      const user = body.data || body;
+      log("");
+      log(color.bold("Server profile:"));
+      if (user.username) log(`  Username: ${user.username}`);
+      if (user.tier) log(`  Tier:     ${user.tier}`);
+      if (user.role) log(`  Role:     ${user.role}`);
+    } else if (res.status === 401) {
+      log("");
+      log(color.yellow("Token rejected by server.") + " Run " + color.cyan("robinpath login") + " to refresh.");
+    }
+  } catch (err) {
+    log("");
+    log(color.dim(`Could not reach server: ${err.message}`));
+  }
+}
+async function handlePublish(args) {
+  const token = requireAuth();
+  const targetArg = args.find((a) => !a.startsWith("-")) || ".";
+  const targetDir = (0, import_node_path.resolve)(targetArg);
+  const pkgPath = (0, import_node_path.join)(targetDir, "package.json");
+  if (!(0, import_node_fs.existsSync)(pkgPath)) {
+    console.error(color.red("Error:") + ` No package.json found in ${targetDir}`);
+    process.exit(2);
+  }
+  let pkg;
+  try {
+    pkg = JSON.parse((0, import_node_fs.readFileSync)(pkgPath, "utf-8"));
+  } catch (err) {
+    console.error(color.red("Error:") + ` Invalid package.json: ${err.message}`);
+    process.exit(2);
+  }
+  if (!pkg.name) {
+    console.error(color.red("Error:") + ' package.json is missing "name" field');
+    process.exit(2);
+  }
+  if (!pkg.version) {
+    console.error(color.red("Error:") + ' package.json is missing "version" field');
+    process.exit(2);
+  }
+  let scope, name;
+  if (pkg.name.startsWith("@") && pkg.name.includes("/")) {
+    const parts = pkg.name.slice(1).split("/");
+    scope = parts[0];
+    name = parts.slice(1).join("/");
+  } else {
+    const auth = readAuth();
+    const emailPrefix = auth?.email?.split("@")[0] || "unknown";
+    scope = emailPrefix;
+    name = pkg.name;
+  }
+  const tmpFile = (0, import_node_path.join)((0, import_node_os.tmpdir)(), `robinpath-publish-${Date.now()}.tar.gz`);
+  const parentDir = (0, import_node_path.dirname)(targetDir);
+  const dirName = (0, import_node_path.basename)(targetDir);
+  log(`Packing @${scope}/${name}@${pkg.version}...`);
+  try {
+    (0, import_node_child_process.execSync)(
+      `tar czf "${tmpFile}" --exclude=node_modules --exclude=.git --exclude=dist -C "${parentDir}" "${dirName}"`,
+      { stdio: "pipe" }
+    );
+  } catch (err) {
+    try {
+      (0, import_node_fs.unlinkSync)(tmpFile);
+    } catch {
+    }
+    console.error(color.red("Error:") + ` Failed to create tarball: ${err.message}`);
+    process.exit(1);
+  }
+  const tarball = (0, import_node_fs.readFileSync)(tmpFile);
+  const maxSize = 5 * 1024 * 1024;
+  if (tarball.length > maxSize) {
+    (0, import_node_fs.unlinkSync)(tmpFile);
+    console.error(color.red("Error:") + ` Package is too large (${(tarball.length / 1024 / 1024).toFixed(1)}MB). Max size is 5MB.`);
+    process.exit(1);
+  }
+  log(color.dim(`Package size: ${(tarball.length / 1024).toFixed(1)}KB`));
+  try {
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/gzip",
+      "X-Package-Version": pkg.version
+    };
+    if (pkg.description) headers["X-Package-Description"] = pkg.description;
+    if (pkg.keywords?.length) headers["X-Package-Keywords"] = pkg.keywords.join(",");
+    if (pkg.license) headers["X-Package-License"] = pkg.license;
+    const res = await fetch(`${PLATFORM_URL}/v1/registry/${scope}/${name}`, {
+      method: "PUT",
+      headers,
+      body: tarball
+    });
+    if (res.ok) {
+      log(color.green("Published") + ` @${scope}/${name}@${pkg.version}`);
+    } else {
+      const body = await res.json().catch(() => ({}));
+      const msg = body?.error?.message || `HTTP ${res.status}`;
+      console.error(color.red("Error:") + ` Failed to publish: ${msg}`);
+      process.exit(1);
+    }
+  } catch (err) {
+    console.error(color.red("Error:") + ` Failed to publish: ${err.message}`);
+    process.exit(1);
+  } finally {
+    try {
+      (0, import_node_fs.unlinkSync)(tmpFile);
+    } catch {
+    }
+  }
+}
+async function handleSync() {
+  requireAuth();
+  let username;
+  try {
+    const meRes = await platformFetch("/v1/me");
+    if (!meRes.ok) {
+      console.error(color.red("Error:") + " Could not fetch account info.");
+      process.exit(1);
+    }
+    const meBody = await meRes.json();
+    const user = meBody.data || meBody;
+    username = user.username || user.email?.split("@")[0] || "unknown";
+  } catch (err) {
+    console.error(color.red("Error:") + ` Could not reach server: ${err.message}`);
+    process.exit(1);
+  }
+  log(`Fetching modules for ${color.cyan(username)}...`);
+  log("");
+  try {
+    const res = await platformFetch(`/v1/registry/search?q=${encodeURIComponent("@" + username + "/")}`);
+    if (!res.ok) {
+      console.error(color.red("Error:") + ` Failed to search registry (HTTP ${res.status}).`);
+      process.exit(1);
+    }
+    const body = await res.json();
+    const modules = body.data || body.modules || [];
+    if (modules.length === 0) {
+      log("No published modules found.");
+      log(`Run ${color.cyan("robinpath publish")} to publish your first module.`);
+      return;
+    }
+    log(color.bold("  Name".padEnd(40) + "Version".padEnd(12) + "Downloads".padEnd(12) + "Visibility"));
+    log(color.dim("  " + "\u2500".repeat(72)));
+    for (const mod of modules) {
+      const name = (mod.scope ? `@${mod.scope}/${mod.name}` : mod.name) || mod.id || "?";
+      const version = mod.version || mod.latestVersion || "-";
+      const downloads = String(mod.downloads ?? mod.downloadCount ?? "-");
+      const visibility = mod.visibility || (mod.isPublic === false ? "private" : "public");
+      log(`  ${name.padEnd(38)}${version.padEnd(12)}${downloads.padEnd(12)}${visibility}`);
+    }
+    log("");
+    log(color.dim(`${modules.length} module${modules.length !== 1 ? "s" : ""}`));
+  } catch (err) {
+    console.error(color.red("Error:") + ` Failed to list modules: ${err.message}`);
+    process.exit(1);
+  }
 }
 async function handleCheck(args) {
   const jsonOutput = args.includes("--json");
@@ -14416,6 +14785,7 @@ function showMainHelp() {
 
 USAGE:
   robinpath [command] [flags] [file]
+  rp [command] [flags] [file]          (shorthand alias)
 
 COMMANDS:
   <file.rp>          Run a RobinPath script
@@ -14425,6 +14795,12 @@ COMMANDS:
   test [dir|file]    Run *.test.rp test files (--json for machine output)
   install            Install robinpath to system PATH
   uninstall          Remove robinpath from system
+  update             Update robinpath to the latest version
+  login              Sign in to RobinPath Cloud via browser
+  logout             Remove stored credentials
+  whoami             Show current user and account info
+  publish [dir]      Publish a module to the registry
+  sync               List your published modules
 
 FLAGS:
   -e, --eval <code>  Execute inline script
@@ -14487,8 +14863,9 @@ TEST WRITING:
 CONFIGURATION:
   Install dir:  ~/.robinpath/bin/
   History file: ~/.robinpath/history
+  Auth file:    ~/.robinpath/auth.json
 
-For more: https://github.com/robinpath/robinpath-cli`);
+For more: https://dev.robinpath.com`);
 }
 function showCommandHelp(command) {
   const helpPages = {
@@ -14603,14 +14980,68 @@ USAGE:
 
 DESCRIPTION:
   Remove ~/.robinpath/ and clean the PATH entry. After uninstalling,
-  restart your terminal.`
+  restart your terminal.`,
+    login: `robinpath login \u2014 Sign in to RobinPath Cloud
+
+USAGE:
+  robinpath login
+
+DESCRIPTION:
+  Opens your browser to sign in via Google. A unique verification code
+  is displayed in your terminal \u2014 confirm it matches in the browser to
+  complete authentication. The token is stored in ~/.robinpath/auth.json
+  and is valid for 30 days.
+
+ENVIRONMENT:
+  ROBINPATH_CLOUD_URL      Override the cloud app URL (default: https://dev.robinpath.com)
+  ROBINPATH_PLATFORM_URL   Override the platform API URL`,
+    logout: `robinpath logout \u2014 Remove stored credentials
+
+USAGE:
+  robinpath logout
+
+DESCRIPTION:
+  Deletes the auth token stored in ~/.robinpath/auth.json.
+  You will need to run 'robinpath login' again to use cloud features.`,
+    whoami: `robinpath whoami \u2014 Show current user info
+
+USAGE:
+  robinpath whoami
+
+DESCRIPTION:
+  Shows your locally stored email and name, token expiry, and
+  fetches your server profile (username, tier, role) if reachable.`,
+    publish: `robinpath publish \u2014 Publish a module to the registry
+
+USAGE:
+  robinpath publish [dir]
+
+DESCRIPTION:
+  Pack the target directory (default: current dir) as a tarball and upload
+  it to the RobinPath registry. Requires a package.json with "name" and
+  "version" fields. Scoped packages (@scope/name) are supported.
+
+  Maximum package size: 5MB.
+  Excluded from tarball: node_modules, .git, dist
+
+EXAMPLES:
+  robinpath publish                   Publish current directory
+  robinpath publish ./packages/uuid   Publish a specific package`,
+    sync: `robinpath sync \u2014 List your published modules
+
+USAGE:
+  robinpath sync
+
+DESCRIPTION:
+  Fetches your published modules from the registry and displays
+  them in a table with name, version, downloads, and visibility.`
   };
   const page = helpPages[command];
   if (page) {
     console.log(page);
   } else {
     console.error(color.red("Error:") + ` Unknown command: ${command}`);
-    console.error("Available commands: fmt, check, ast, test, install, uninstall");
+    console.error("Available commands: fmt, check, ast, test, install, uninstall, login, logout, whoami, publish, sync");
     process.exit(2);
   }
 }
@@ -14826,8 +15257,10 @@ async function main() {
   const args = process.argv.slice(2);
   FLAG_QUIET = args.includes("--quiet") || args.includes("-q");
   FLAG_VERBOSE = args.includes("--verbose");
+  const invokedAs = (0, import_node_path.basename)(process.execPath, ".exe").toLowerCase();
+  const cliName = invokedAs === "rp" ? "rp" : "robinpath";
   if (args.includes("--version") || args.includes("-v")) {
-    console.log(`robinpath v${Sn}`);
+    console.log(`${cliName} v${Sn}`);
     return;
   }
   if (args.includes("--help") || args.includes("-h")) {
@@ -14852,6 +15285,10 @@ async function main() {
     handleUninstall();
     return;
   }
+  if (command === "update") {
+    handleUpdate();
+    return;
+  }
   if (command === "check") {
     await handleCheck(args.slice(1));
     return;
@@ -14866,6 +15303,26 @@ async function main() {
   }
   if (command === "test") {
     await handleTest(args.slice(1));
+    return;
+  }
+  if (command === "login") {
+    await handleLogin();
+    return;
+  }
+  if (command === "logout") {
+    handleLogout();
+    return;
+  }
+  if (command === "whoami") {
+    await handleWhoami();
+    return;
+  }
+  if (command === "publish") {
+    await handlePublish(args.slice(1));
+    return;
+  }
+  if (command === "sync") {
+    await handleSync();
     return;
   }
   const evalIdx = args.indexOf("-e") !== -1 ? args.indexOf("-e") : args.indexOf("--eval");
@@ -14912,6 +15369,7 @@ async function main() {
     }
     return;
   }
+  checkForUpdates();
   await startREPL();
 }
 main().catch((err) => {

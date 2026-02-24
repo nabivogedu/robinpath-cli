@@ -1,5 +1,5 @@
 # RobinPath installer for Windows
-# Usage: irm https://raw.githubusercontent.com/nabivogedu/robinpath-cli/main/install.ps1 | iex
+# Usage: irm https://dev.robinpath.com/install.ps1 | iex
 & {
     $ErrorActionPreference = "Stop"
 
@@ -16,7 +16,7 @@
     try {
         $Release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
     } catch {
-        Write-Host "  Error: No releases found." -ForegroundColor Red
+        Write-Host "  Error: No releases found. $_" -ForegroundColor Red
         Write-Host "  Please visit https://github.com/$Repo/releases" -ForegroundColor Yellow
         return
     }
@@ -37,13 +37,38 @@
     }
 
     $ExePath = "$InstallDir\robinpath.exe"
+    $RpPath = "$InstallDir\rp.exe"
+    $TempPath = "$InstallDir\robinpath-new.exe"
 
-    # Download binary
+    # Download to a temp file first (avoids locked-file issue on self-update)
     Write-Host "  Downloading $BinaryName..."
     try {
-        Invoke-WebRequest -Uri $DownloadUrl -OutFile $ExePath -UseBasicParsing
+        Invoke-WebRequest -Uri $DownloadUrl -OutFile $TempPath -UseBasicParsing
     } catch {
-        Write-Host "  Error: Download failed." -ForegroundColor Red
+        Write-Host "  Error: Download failed. $_" -ForegroundColor Red
+        return
+    }
+
+    # Replace the existing binary
+    try {
+        # If the exe is currently running (self-update), rename the old one first
+        if (Test-Path $ExePath) {
+            $OldPath = "$InstallDir\robinpath-old.exe"
+            if (Test-Path $OldPath) { Remove-Item $OldPath -Force }
+            Rename-Item $ExePath $OldPath -Force
+        }
+        Rename-Item $TempPath $ExePath -Force
+
+        # Copy as rp.exe alias
+        Copy-Item $ExePath $RpPath -Force
+
+        # Clean up old binary
+        $OldPath = "$InstallDir\robinpath-old.exe"
+        if (Test-Path $OldPath) {
+            try { Remove-Item $OldPath -Force } catch { }
+        }
+    } catch {
+        Write-Host "  Error: Could not replace binary. $_" -ForegroundColor Red
         return
     }
 
