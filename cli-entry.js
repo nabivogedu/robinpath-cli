@@ -278,7 +278,7 @@ function readStdin() {
 // Cloud / Auth utilities
 // ============================================================================
 
-const CLOUD_URL = process.env.ROBINPATH_CLOUD_URL || 'https://robinpath.com';
+const CLOUD_URL = process.env.ROBINPATH_CLOUD_URL || 'https://dev.robinpath.com';
 const PLATFORM_URL = process.env.ROBINPATH_PLATFORM_URL || 'https://robinpath-platform.nabivogedu.workers.dev';
 
 function getAuthPath() {
@@ -1422,7 +1422,7 @@ DESCRIPTION:
   The token is valid for 30 days.
 
 ENVIRONMENT:
-  ROBINPATH_CLOUD_URL      Override the cloud app URL (default: https://robinpath.com)
+  ROBINPATH_CLOUD_URL      Override the cloud app URL (default: https://dev.robinpath.com)
   ROBINPATH_PLATFORM_URL   Override the platform API URL`,
 
         logout: `robinpath logout — Remove stored credentials
