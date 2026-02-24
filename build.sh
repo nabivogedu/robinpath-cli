@@ -7,20 +7,20 @@ set -e
 echo "=== Building RobinPath Engine ==="
 
 # Step 1: Build the TypeScript source
-echo "[1/4] Building @wiredwp/robinpath..."
+echo "[1/5] Building @wiredwp/robinpath..."
 cd ../robinpath && npm run build && cd ../robinpath-engine
 
 # Step 2: Bundle into single CJS file
-echo "[2/4] Bundling CLI..."
+echo "[2/5] Bundling CLI..."
 mkdir -p dist
 npx esbuild cli-entry.js --bundle --platform=node --format=cjs --target=node22 --outfile=dist/robinpath-cli.cjs
 
 # Step 3: Generate SEA blob
-echo "[3/4] Generating SEA blob..."
+echo "[3/5] Generating SEA blob..."
 node --experimental-sea-config sea-config.json
 
 # Step 4: Create binary
-echo "[4/4] Creating binary..."
+echo "[4/5] Creating binary..."
 NODE_BIN=$(node -e "process.stdout.write(process.execPath)")
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
     OUTPUT="dist/robinpath.exe"
@@ -35,7 +35,17 @@ if [[ "$OSTYPE" != "msys" && "$OSTYPE" != "cygwin" && "$OSTYPE" != "win32" ]]; t
     chmod +x "$OUTPUT"
 fi
 
+# Step 5: Create 'rp' alias binary
+echo "[5/5] Creating 'rp' alias..."
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
+    RP_OUTPUT="dist/rp.exe"
+else
+    RP_OUTPUT="dist/rp"
+fi
+cp "$OUTPUT" "$RP_OUTPUT"
+
 echo ""
 echo "=== Done! ==="
 echo "Binary: $OUTPUT"
-ls -lh "$OUTPUT"
+echo "Alias:  $RP_OUTPUT"
+ls -lh "$OUTPUT" "$RP_OUTPUT"

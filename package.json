@@ -8,6 +8,10 @@
         "build:blob": "node --experimental-sea-config sea-config.json",
         "build": "npm run build:bundle && npm run build:blob"
     },
+    "bin": {
+        "robinpath": "cli-entry.js",
+        "rp": "cli-entry.js"
+    },
     "dependencies": {
         "@robinpath/robinpath": "^0.30.1"
     }

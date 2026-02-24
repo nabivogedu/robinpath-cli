@@ -56,13 +56,50 @@ function getRobinPathHome() {
 }
 
 /**
+ * Check for newer versions on GitHub
+ */
+async function checkForUpdates() {
+    try {
+        const res = await fetch('https://api.github.com/repos/nabivogedu/robinpath-cli/releases/latest');
+        const data = await res.json();
+        const latest = data.tag_name.replace('v', '');
+        if (latest !== ROBINPATH_VERSION) {
+            console.log(`\n${color.yellow('⚡')} New version available: ${color.green('v' + latest)} (you have v${ROBINPATH_VERSION})`);
+            console.log(`   Run ${color.cyan('robinpath update')} to upgrade\n`);
+        }
+    } catch {
+        // silently ignore update check failures
+    }
+}
+
+/**
+ * Update: re-run the install script for the current platform
+ */
+function handleUpdate() {
+    const isWindows = platform() === 'win32';
+    log(`Updating RobinPath...`);
+    try {
+        if (isWindows) {
+            execSync('powershell -NoProfile -Command "irm https://dev.robinpath.com/install.ps1 | iex"', { stdio: 'inherit' });
+        } else {
+            execSync('curl -fsSL https://dev.robinpath.com/install.sh | sh', { stdio: 'inherit' });
+        }
+    } catch (err) {
+        console.error(color.red('Update failed:') + ` ${err.message}`);
+        process.exit(1);
+    }
+}
+
+/**
  * Install: copy this exe to ~/.robinpath/bin and add to PATH
  */
 function handleInstall() {
     const installDir = getInstallDir();
     const isWindows = platform() === 'win32';
     const exeName = isWindows ? 'robinpath.exe' : 'robinpath';
+    const rpName = isWindows ? 'rp.exe' : 'rp';
     const dest = join(installDir, exeName);
+    const rpDest = join(installDir, rpName);
     const src = process.execPath;
 
     // Already installed in the right place?
@@ -77,10 +114,14 @@ function handleInstall() {
     // Copy binary
     copyFileSync(src, dest);
 
+    // Copy alias binary (rp)
+    copyFileSync(src, rpDest);
+
     // Make executable on Unix
     if (!isWindows) {
         try {
             chmodSync(dest, 0o755);
+            chmodSync(rpDest, 0o755);
         } catch {
             // ignore chmod failures
         }
@@ -115,6 +156,7 @@ function handleInstall() {
     log('');
     log(`Installed robinpath v${ROBINPATH_VERSION}`);
     log(`Location: ${dest}`);
+    log(`Alias:    ${rpDest} (use "rp" as shorthand)`);
     log('');
     log('Restart your terminal, then run:');
     log('  robinpath --version');
@@ -399,10 +441,20 @@ async function handleLogin() {
         server.listen(0, '127.0.0.1', () => {
             const port = server.address().port;
             const callbackUrl = `http://localhost:${port}/callback`;
-            const loginUrl = `${CLOUD_URL}/api/auth/cli?callback=${encodeURIComponent(callbackUrl)}`;
+
+            // Generate a verification code the user can match in the browser
+            const code = 'ROBIN-' + Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 31)]).join('');
+            const deviceName = require('os').hostname();
+            const deviceOS = process.platform;
+
+            const loginUrl = `${CLOUD_URL}/api/auth/cli?callback=${encodeURIComponent(callbackUrl)}&code=${encodeURIComponent(code)}&device=${encodeURIComponent(deviceName)}&os=${encodeURIComponent(deviceOS)}`;
 
             log('Opening browser to sign in...');
-            log(color.dim('Waiting for authentication...'));
+            log('');
+            log(`  Verification code: ${color.cyan(code)}`);
+            log(`  Device: ${color.dim(deviceName)} (${color.dim(deviceOS)})`);
+            log('');
+            log(color.dim('Confirm this code matches in your browser.'));
             log('');
             log(color.dim(`If the browser doesn't open, visit:`));
             log(color.cyan(loginUrl));
@@ -1156,6 +1208,7 @@ function showMainHelp() {
 
 USAGE:
   robinpath [command] [flags] [file]
+  rp [command] [flags] [file]          (shorthand alias)
 
 COMMANDS:
   <file.rp>          Run a RobinPath script
@@ -1165,6 +1218,7 @@ COMMANDS:
   test [dir|file]    Run *.test.rp test files (--json for machine output)
   install            Install robinpath to system PATH
   uninstall          Remove robinpath from system
+  update             Update robinpath to the latest version
   login              Sign in to RobinPath Cloud via browser
   logout             Remove stored credentials
   whoami             Show current user and account info
@@ -1742,6 +1796,10 @@ async function main() {
         handleUninstall();
         return;
     }
+    if (command === 'update') {
+        handleUpdate();
+        return;
+    }
 
     // check <file>
     if (command === 'check') {
@@ -1855,6 +1913,9 @@ async function main() {
         }
         return;
     }
+
+    // Check for updates (non-blocking, before REPL)
+    checkForUpdates();
 
     // Interactive REPL (stdin is a terminal)
     await startREPL();

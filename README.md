@@ -91,7 +91,10 @@ Removes the binary and cleans it from your PATH. Restart your terminal after.
 
 ```
 robinpath [command] [options] [file]
+rp [command] [options] [file]          # shorthand alias
 ```
+
+> `rp` is a shorthand alias for `robinpath`. Both commands are identical.
 
 ### Run a script file
 
@@ -140,6 +143,7 @@ Goodbye!
 |-------------|------------------------------------------|
 | `install`   | Install robinpath to your system PATH    |
 | `uninstall` | Remove robinpath from your system        |
+| `update`    | Update robinpath to the latest version   |
 
 ## Options
 
