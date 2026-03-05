@@ -13,7 +13,7 @@ import { createHash } from 'node:crypto';
 import { RobinPath, ROBINPATH_VERSION, Parser, Printer, LineIndexImpl, formatErrorWithContext } from '@wiredwp/robinpath';
 
 // Injected by esbuild at build time via --define, fallback for dev mode
-const CLI_VERSION = typeof __CLI_VERSION__ !== 'undefined' ? __CLI_VERSION__ : '1.39.0';
+const CLI_VERSION = typeof __CLI_VERSION__ !== 'undefined' ? __CLI_VERSION__ : '1.40.0';
 
 // ============================================================================
 // Global flags
@@ -930,19 +930,37 @@ async function handleAdd(args) {
         }
     }
 
-    // Download tarball from registry
-    const versionQuery = version ? `?version=${encodeURIComponent(version)}` : '';
-    log(`Installing ${fullName}${version ? '@' + version : ''}...`);
+    // Resolve version if not specified
+    let resolvedVersion = version;
+    if (!resolvedVersion) {
+        try {
+            const infoRes = await platformFetch(`/v1/registry/${scope}/${name}`);
+            if (!infoRes.ok) {
+                console.error(color.red('Error:') + ` Module not found: ${fullName}`);
+                process.exit(1);
+            }
+            const info = await infoRes.json();
+            resolvedVersion = info.data?.latestVersion || info.data?.version;
+            if (!resolvedVersion) {
+                console.error(color.red('Error:') + ` No versions available for ${fullName}`);
+                process.exit(1);
+            }
+        } catch (err) {
+            console.error(color.red('Error:') + ` Could not reach registry: ${err.message}`);
+            process.exit(1);
+        }
+    }
 
+    log(`Installing ${fullName}@${resolvedVersion}...`);
+
+    // Download tarball from registry
     let tarballBuffer;
     try {
-        const res = await fetch(`${PLATFORM_URL}/v1/registry/${scope}/${name}/download${versionQuery}`, {
-            headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await platformFetch(`/v1/registry/${scope}/${name}/${resolvedVersion}/tarball`);
 
         if (!res.ok) {
             if (res.status === 404) {
-                console.error(color.red('Error:') + ` Module not found: ${fullName}`);
+                console.error(color.red('Error:') + ` Module or version not found: ${fullName}@${resolvedVersion}`);
             } else if (res.status === 401 || res.status === 403) {
                 console.error(color.red('Error:') + ' Access denied. You may not have permission to install this module.');
             } else {
@@ -965,7 +983,7 @@ async function handleAdd(args) {
     if (!existsSync(CACHE_DIR)) {
         mkdirSync(CACHE_DIR, { recursive: true });
     }
-    const cacheFile = join(CACHE_DIR, `${scope}-${name}-${version || 'latest'}.tar.gz`);
+    const cacheFile = join(CACHE_DIR, `${scope}-${name}-${resolvedVersion}.tar.gz`);
     writeFileSync(cacheFile, tarballBuffer);
 
     // Extract to modules dir
@@ -991,8 +1009,37 @@ async function handleAdd(args) {
 
     try { unlinkSync(tmpFile); } catch { /* ignore */ }
 
+    // Build if dist/ is missing but src/ exists (module published without build)
+    const distDir = join(modDir, 'dist');
+    const srcDir = join(modDir, 'src');
+    if (!existsSync(distDir) && existsSync(srcDir) && existsSync(join(srcDir, 'index.ts'))) {
+        log(color.dim('  Compiling module...'));
+        mkdirSync(distDir, { recursive: true });
+        // Strip TypeScript types using Node 22's built-in --experimental-strip-types
+        // Each .ts file → .js file with types removed
+        const tsFiles = readdirSync(srcDir).filter(f => f.endsWith('.ts'));
+        for (const file of tsFiles) {
+            const srcFile = join(srcDir, file);
+            const outFile = join(distDir, file.replace('.ts', '.js'));
+            try {
+                // Use node's module.stripTypeScriptTypes (Node 22.6+)
+                const stripScript = `
+                    const fs = require('fs');
+                    const { stripTypeScriptTypes } = require('module');
+                    const src = fs.readFileSync(${JSON.stringify(srcFile)}, 'utf-8');
+                    const js = stripTypeScriptTypes(src, { mode: 'transform', sourceMap: false });
+                    fs.writeFileSync(${JSON.stringify(outFile)}, js);
+                `;
+                execSync(`node -e "${stripScript.replace(/\n/g, ' ').replace(/"/g, '\\"')}"`, { stdio: 'pipe' });
+            } catch {
+                // Fallback: copy as-is (may fail to load)
+                copyFileSync(srcFile, outFile);
+            }
+        }
+    }
+
     // Read extracted package.json for version info
-    let installedVersion = version || 'unknown';
+    let installedVersion = resolvedVersion;
     const pkgJsonPath = join(modDir, 'package.json');
     if (existsSync(pkgJsonPath)) {
         try {
