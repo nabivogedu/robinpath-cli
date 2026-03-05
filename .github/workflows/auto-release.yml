@@ -10,44 +10,49 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  check:
     runs-on: ubuntu-latest
-
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      exists: ${{ steps.version.outputs.exists }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Check version bump
         id: version
         run: |
           CURRENT=$(node -p "require('./package.json').version")
-          echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
           TAG="v$CURRENT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-          # Check if tag already exists
           if git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create release
-        if: steps.version.outputs.exists == 'false'
+  create-release:
+    needs: check
+    if: needs.check.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create tag and release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ needs.check.outputs.tag }}"
 
-          # Create annotated tag
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
 
-          # Generate changelog from commits since last tag
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
             CHANGELOG=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s" --no-merges)
@@ -55,12 +60,72 @@ jobs:
             CHANGELOG=$(git log --pretty=format:"- %s" --no-merges -20)
           fi
 
-          # Create GitHub release (triggers build workflow)
           gh release create "$TAG" \
             --title "RobinPath $TAG" \
             --notes "## Changes
-          $CHANGELOG
-
-          ---
-          Binaries will be attached automatically once the build completes." \
+          $CHANGELOG" \
             --latest
+
+  build:
+    needs: [check, create-release]
+    if: needs.check.outputs.exists == 'false'
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            name: robinpath-windows-x64.exe
+          - os: ubuntu-latest
+            name: robinpath-linux-x64
+          - os: macos-latest
+            name: robinpath-macos-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Bundle CLI
+        run: npm run build:bundle
+
+      - name: Generate SEA blob
+        run: node --experimental-sea-config sea-config.json
+
+      - name: Create binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item (Get-Command node).Source -Destination "dist/${{ matrix.name }}"
+          npx postject "dist/${{ matrix.name }}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+
+      - name: Create binary (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cp "$(which node)" "dist/${{ matrix.name }}"
+          npx postject "dist/${{ matrix.name }}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+          chmod +x "dist/${{ matrix.name }}"
+
+      - name: Create binary (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cp "$(which node)" "dist/${{ matrix.name }}"
+          codesign --remove-signature "dist/${{ matrix.name }}"
+          npx postject "dist/${{ matrix.name }}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 --macho-segment-name NODE_SEA
+          codesign -s - "dist/${{ matrix.name }}"
+          chmod +x "dist/${{ matrix.name }}"
+
+      - name: Verify binary
+        shell: bash
+        run: ./dist/${{ matrix.name }} --version
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.check.outputs.tag }}
+          files: dist/${{ matrix.name }}
