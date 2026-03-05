@@ -13,7 +13,7 @@ import { createHash } from 'node:crypto';
 import { RobinPath, ROBINPATH_VERSION, Parser, Printer, LineIndexImpl, formatErrorWithContext } from '@wiredwp/robinpath';
 
 // Injected by esbuild at build time via --define, fallback for dev mode
-const CLI_VERSION = typeof __CLI_VERSION__ !== 'undefined' ? __CLI_VERSION__ : '1.40.0';
+const CLI_VERSION = typeof __CLI_VERSION__ !== 'undefined' ? __CLI_VERSION__ : '1.41.0';
 
 // ============================================================================
 // Global flags
@@ -1309,14 +1309,31 @@ async function handleModulesInit() {
     log(color.dim('  ' + '─'.repeat(35)));
     log('');
 
-    const moduleName = await ask('  Module name');
-    if (!moduleName) {
+    const rawName = await ask('  Module name');
+    if (!rawName) {
         console.error(color.red('Error:') + ' Module name is required');
         rl.close();
         process.exit(2);
     }
 
-    const displayName = await ask('  Display name', moduleName.charAt(0).toUpperCase() + moduleName.slice(1));
+    // Slugify: "My First Module" → "my-first-module"
+    const moduleName = rawName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+
+    if (!moduleName) {
+        console.error(color.red('Error:') + ' Invalid module name');
+        rl.close();
+        process.exit(2);
+    }
+
+    if (moduleName !== rawName) {
+        log(color.dim(`  → ${moduleName}`));
+    }
+
+    const defaultDisplay = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+    const displayName = await ask('  Display name', defaultDisplay);
     const description = await ask('  Description', `${displayName} integration for RobinPath`);
 
     log('');

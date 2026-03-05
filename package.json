@@ -1,6 +1,6 @@
 {
     "name": "robinpath-engine",
-    "version": "1.40.0",
+    "version": "1.41.0",
     "private": true,
     "type": "module",
     "description": "Standalone binary builder for the RobinPath scripting language",
