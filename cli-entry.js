@@ -1314,7 +1314,7 @@ async function handleModulesInit() {
         files: ['dist'],
         scripts: { build: 'tsc', test: `robinpath test tests/` },
         robinpath: { category, displayName },
-        peerDependencies: { '@wiredwp/robinpath': '>=0.30.0' },
+        peerDependencies: { '@wiredwp/robinpath': '>=1.20.0' },
         devDependencies: { '@wiredwp/robinpath': '^0.30.1', typescript: '^5.6.0' },
     }, null, 2) + '\n', 'utf-8');
 
