@@ -4,7 +4,7 @@
     $ErrorActionPreference = "Stop"
     $ProgressPreference = "SilentlyContinue"
 
-    $Repo = "nabivogedu/robinpath-cli"
+    $Repo = "wiredwp/robinpath-cli"
     $InstallDir = "$env:USERPROFILE\.robinpath\bin"
     $BinaryName = "robinpath-windows-x64.exe"
     $StartTime = Get-Date

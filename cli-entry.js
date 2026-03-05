@@ -13,7 +13,7 @@ import { createHash } from 'node:crypto';
 import { RobinPath, ROBINPATH_VERSION, Parser, Printer, LineIndexImpl, formatErrorWithContext } from '@wiredwp/robinpath';
 
 // Injected by esbuild at build time via --define, fallback for dev mode
-const CLI_VERSION = typeof __CLI_VERSION__ !== 'undefined' ? __CLI_VERSION__ : '1.34.0';
+const CLI_VERSION = typeof __CLI_VERSION__ !== 'undefined' ? __CLI_VERSION__ : '1.36.0';
 
 // ============================================================================
 // Global flags
@@ -76,7 +76,7 @@ function toTarPath(p) {
  */
 async function checkForUpdates() {
     try {
-        const res = await fetch('https://api.github.com/repos/nabivogedu/robinpath-cli/releases/latest');
+        const res = await fetch('https://api.github.com/repos/wiredwp/robinpath-cli/releases/latest');
         const data = await res.json();
         const latest = data.tag_name.replace('v', '');
         if (latest !== CLI_VERSION) {

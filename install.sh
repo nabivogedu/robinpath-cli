@@ -3,7 +3,7 @@
 # Usage: curl -fsSL https://dev.robinpath.com/install.sh | sh
 set -e
 
-REPO="nabivogedu/robinpath-cli"
+REPO="wiredwp/robinpath-cli"
 INSTALL_DIR="$HOME/.robinpath/bin"
 START_TIME=$(date +%s)
 

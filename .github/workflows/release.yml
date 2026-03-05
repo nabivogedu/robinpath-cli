@@ -67,6 +67,6 @@ jobs:
           ./dist/${{ matrix.name }} --version
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/${{ matrix.name }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" "dist/${{ matrix.name }}" --clobber
